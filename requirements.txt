@@ -1,0 +1,7 @@
+anthropic>=0.40
+pymupdf>=1.24
+openpyxl>=3.1
+streamlit>=1.38
+pandas>=2.0
+Pillow>=10.0
+tabulate>=0.9

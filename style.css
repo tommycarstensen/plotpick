@@ -1,0 +1,208 @@
+/* Region Hovedstaden / PCK -- DARK theme for AutoExtract */
+
+/* --- CSS custom properties (palette) --- */
+:root {
+    --rh-navy: #002555;
+    --rh-blue: #007dbb;
+    --rh-grey: #646c6f;
+    --rh-light-blue: #ccd3dd;
+    --rh-light-grey: #e5e9ee;
+    --rh-white: #ffffff;
+
+    /* Dark-theme surfaces */
+    --bg-dark: #001a3d;       /* slightly lighter than navy */
+    --bg-card: #002555;       /* navy for cards / panels */
+    --bg-input: #00315e;      /* input fields */
+    --text-primary: #e5e9ee;  /* light grey -- main text */
+    --text-muted: #ccd3dd;    /* light blue-grey -- secondary text */
+    --border: #1a3a6a;        /* subtle border */
+}
+
+/* ── Global ──────────────────────────────────────────────────────────── */
+.stApp {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+}
+/* Force all text light */
+.stApp p,
+.stApp span,
+.stApp label,
+.stApp li,
+.stApp td,
+.stApp th,
+.stApp .stMarkdown,
+.stApp .stCaption,
+.stApp .stAlert p,
+.stApp .stAlert span,
+.stApp div[data-testid="stMetricValue"],
+.stApp div[data-testid="stMetricLabel"] {
+    color: var(--text-primary) !important;
+}
+
+/* ── Top header bar ──────────────────────────────────────────────────── */
+header[data-testid="stHeader"] {
+    background-color: var(--rh-navy);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background-color: var(--rh-navy);
+    width: 22rem !important;
+    min-width: 22rem !important;
+}
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+section[data-testid="stSidebar"] .stCheckbox label span {
+    color: var(--rh-white) !important;
+}
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stTextInput label,
+section[data-testid="stSidebar"] .stNumberInput label,
+section[data-testid="stSidebar"] .stRadio label {
+    color: var(--text-muted) !important;
+}
+
+/* Sidebar collapse/expand arrow */
+button[data-testid="stSidebarCollapseButton"],
+button[data-testid="stSidebarCollapseButton"] svg,
+button[data-testid="collapsedControl"],
+button[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapsedControl"] svg {
+    color: var(--rh-white) !important;
+    fill: var(--rh-white) !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.stButton > button,
+.stButton > button span {
+    background-color: var(--rh-blue);
+    color: var(--rh-white) !important;
+    border: none;
+    border-radius: 4px;
+    padding: 0.4rem 1.2rem;
+    font-weight: 600;
+}
+.stButton > button:hover,
+.stButton > button:hover span {
+    background-color: #2a9ad4;  /* slightly lighter than --rh-blue */
+    color: var(--rh-white) !important;
+    border: none;
+}
+.stDownloadButton > button,
+.stDownloadButton > button span {
+    background-color: var(--rh-blue);
+    color: var(--rh-white) !important;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+}
+.stDownloadButton > button:hover,
+.stDownloadButton > button:hover span {
+    background-color: #2a9ad4;
+    color: var(--rh-white) !important;
+    border: none;
+}
+
+/* ── Checkboxes ──────────────────────────────────────────────────────── */
+/* Label text */
+.stCheckbox label span {
+    color: var(--text-primary) !important;
+}
+/* Unchecked box: light border so it's visible on dark background */
+.stCheckbox div[role="checkbox"],
+.stCheckbox [data-testid="stCheckbox"] > div:first-child {
+    border-color: var(--text-muted) !important;
+    background-color: transparent !important;
+}
+/* Checked box: RegionH blue with white tick */
+.stCheckbox div[role="checkbox"][aria-checked="true"],
+.stCheckbox [data-testid="stCheckbox"] > div:first-child[aria-checked="true"] {
+    background-color: var(--rh-blue) !important;
+    border-color: var(--rh-blue) !important;
+    color: var(--rh-white) !important;
+}
+/* White check-mark SVG inside the box */
+.stCheckbox div[role="checkbox"] svg,
+.stCheckbox [data-testid="stCheckbox"] svg {
+    fill: var(--rh-white) !important;
+    stroke: var(--rh-white) !important;
+}
+/* Fallback: catch any Streamlit checkbox wrapper with color overrides */
+[data-baseweb="checkbox"] [data-testid="stWidgetLabel"] {
+    color: var(--text-primary) !important;
+}
+[data-baseweb="checkbox"] div[role="checkbox"] {
+    border-color: var(--text-muted) !important;
+}
+[data-baseweb="checkbox"] div[role="checkbox"][aria-checked="true"] {
+    background-color: var(--rh-blue) !important;
+    border-color: var(--rh-blue) !important;
+}
+
+/* ── Metric cards ────────────────────────────────────────────────────── */
+div[data-testid="stMetric"] {
+    background-color: var(--bg-card);
+    border-left: 4px solid var(--rh-blue);
+    padding: 0.8rem 1rem;
+    border-radius: 4px;
+}
+
+/* ── Code blocks (markdown / LaTeX / R / JSON previews) ──────────────── */
+.stCode, .stCode code, .stCode pre,
+code, pre {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-card) !important;
+}
+
+/* ── Tables / dataframes ─────────────────────────────────────────────── */
+.stDataFrame {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background-color: var(--bg-card);
+}
+/* Dataframe toolbar (fullscreen button etc.) on hover */
+.stDataFrame [data-testid="stElementToolbar"],
+.stDataFrame [data-testid="stElementToolbar"] button,
+.stDataFrame [data-testid="stElementToolbar"] svg {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border) !important;
+}
+.stDataFrame [data-testid="stElementToolbar"] button:hover {
+    background-color: var(--bg-input) !important;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────── */
+button[data-baseweb="tab"],
+button[data-baseweb="tab"] span {
+    color: var(--text-muted) !important;
+    font-weight: 600;
+}
+button[data-baseweb="tab"][aria-selected="true"],
+button[data-baseweb="tab"][aria-selected="true"] span {
+    color: var(--rh-white) !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+    border-bottom-color: var(--rh-blue) !important;
+}
+
+/* ── Alerts (info / success / warning / error boxes) ─────────────────── */
+.stAlert {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Dividers ────────────────────────────────────────────────────────── */
+hr {
+    border-color: var(--border) !important;
+}
+
+/* ── Progress bar ────────────────────────────────────────────────────── */
+.stProgress > div > div {
+    background-color: var(--rh-blue) !important;
+}
