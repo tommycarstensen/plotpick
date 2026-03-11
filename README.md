@@ -15,6 +15,25 @@ as tables and can be exported in multiple formats.
   with biomarker, group, timepoint, and summary statistics
 - **Export formats** -- Markdown, Excel, CSV, JSON
 
+## Architecture
+
+```mermaid
+flowchart TD
+    A["📁 Upload images, PDFs, or ZIPs"] --> B["🔍 Automatic figure detection<br/>from PDFs"]
+    A --> C["🖼️ Image gallery"]
+    B --> C
+    C --> D["☑️ Select figures to extract"]
+    D --> E["🔑 Send to Claude Vision API"]
+    E --> F{"🤖 AI reads the figure"}
+    F -->|✅ Success| G["📊 Structured data table<br/>with confidence score"]
+    F -->|❌ Error| H["⚠️ Flag & continue"]
+    G --> I["📤 Export"]
+    I --> J["📗 Excel"]
+    I --> K["📄 CSV"]
+    I --> L["🔬 LaTeX"]
+    I --> M["📦 JSON / R / Markdown"]
+```
+
 ## Quickstart
 
 1. Install dependencies:
