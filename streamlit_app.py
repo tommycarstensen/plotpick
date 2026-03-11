@@ -80,6 +80,10 @@ Follow these rules strictly:
    Report the ACTUAL precision, not a round number.
 7. Include a "notes" string listing any specific values that were hard
    to read and explaining why.
+8. For EACH data row, include an "uncertain" field: a list of column
+   names whose values you are unsure about (e.g. overlapping boxes,
+   blurry region, ambiguous tick alignment, very small figure).
+   Use an empty list [] when all values in that row are confident.
 
 Example -- multi-panel boxplot with timepoints:
 {
@@ -89,10 +93,10 @@ Example -- multi-panel boxplot with timepoints:
   "confidence": 76,
   "notes": "IL-6 Week 12 boxes overlap; Q1/Q3 approximate",
   "data": [
-    {"biomarker": "IL-6", "group": "Responders", "timepoint": "Baseline", "median": 9.5, "q1": 7.0, "q3": 12.0},
-    {"biomarker": "IL-6", "group": "Responders", "timepoint": "Week 6", "median": 8.0, "q1": 6.5, "q3": 10.5},
-    {"biomarker": "IL-6", "group": "Non-Responders", "timepoint": "Baseline", "median": 10.0, "q1": 8.0, "q3": 13.0},
-    {"biomarker": "CRP", "group": "Responders", "timepoint": "Baseline", "median": 3.2, "q1": 2.5, "q3": 4.0}
+    {"biomarker": "IL-6", "group": "Responders", "timepoint": "Baseline", "median": 9.5, "q1": 7.0, "q3": 12.0, "uncertain": []},
+    {"biomarker": "IL-6", "group": "Responders", "timepoint": "Week 6", "median": 8.0, "q1": 6.5, "q3": 10.5, "uncertain": ["q1", "q3"]},
+    {"biomarker": "IL-6", "group": "Non-Responders", "timepoint": "Baseline", "median": 10.0, "q1": 8.0, "q3": 13.0, "uncertain": []},
+    {"biomarker": "CRP", "group": "Responders", "timepoint": "Baseline", "median": 3.2, "q1": 2.5, "q3": 4.0, "uncertain": ["median"]}
   ]
 }
 
@@ -738,7 +742,9 @@ with tab_results:
                 "| 60--79 | Small figure, overlapping elements, or missing ticks |\n"
                 "| < 60 | Largely guessing -- consider manual verification |\n\n"
                 "**Tip:** Always cross-check extracted values against the original "
-                "figure, especially when confidence is below 80."
+                "figure, especially when confidence is below 80.\n\n"
+                "Cells highlighted in amber are individual values the model "
+                "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
             )
         # Build a lookup from label -> PIL Image for showing source figures
         _img_lookup: dict[str, Image.Image] = {
@@ -786,11 +792,40 @@ with tab_results:
                 if notes:
                     st.caption(f"Notes: {notes}")
 
-                # Data table
+                # Data table with uncertain-value highlighting
                 data_rows = result.get("data", [])
                 if data_rows:
+                    # Extract per-row uncertain lists before building the DF
+                    uncertain_lists: list[list[str]] = [
+                        row.pop("uncertain", []) or [] for row in data_rows
+                    ]
                     df = pd.DataFrame(data_rows)
-                    st.dataframe(df, use_container_width=True, hide_index=True)
+
+                    # Build a mask of cells that were flagged as uncertain
+                    uncertain_mask = pd.DataFrame(
+                        False, index=df.index, columns=df.columns,
+                    )
+                    for i, cols in enumerate(uncertain_lists):
+                        for col in cols:
+                            if col in uncertain_mask.columns:
+                                uncertain_mask.at[i, col] = True
+
+                    if uncertain_mask.any().any():
+                        styled = df.style.apply(
+                            lambda col: [
+                                "background-color: rgba(255, 170, 0, 0.25)"
+                                if uncertain_mask.at[idx, col.name] else ""
+                                for idx in col.index
+                            ],
+                            axis=0,
+                        )
+                        st.dataframe(
+                            styled, use_container_width=True, hide_index=True,
+                        )
+                    else:
+                        st.dataframe(
+                            df, use_container_width=True, hide_index=True,
+                        )
                 else:
                     st.warning("No data rows extracted.")
 
