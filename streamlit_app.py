@@ -740,6 +740,11 @@ with tab_results:
                 "**Tip:** Always cross-check extracted values against the original "
                 "figure, especially when confidence is below 80."
             )
+        # Build a lookup from label -> PIL Image for showing source figures
+        _img_lookup: dict[str, Image.Image] = {
+            lbl: img for lbl, img in st.session_state.all_images
+        }
+
         for label, result in st.session_state.results.items():
             st.markdown(
                 f'<h4 style="color:{LIGHT_BLUE};">{label}</h4>',
@@ -750,34 +755,44 @@ with tab_results:
                 st.error(f"Extraction failed: {result['error']}")
                 continue
 
-            # Metadata as a compact inline summary
-            fig_type = result.get("figure_type", "?").capitalize()
-            y_ax = result.get("y_axis", "?")
-            scale = result.get("scale", "?").capitalize()
-            conf = result.get("confidence", "?")
-            notes = result.get("notes", "")
-            st.markdown(
-                f'<div style="background:{NAVY};border-left:4px solid {BLUE};'
-                f'padding:0.6rem 1rem;border-radius:4px;margin-bottom:0.5rem;'
-                f'font-size:0.9rem;color:{TEXT_LIGHT};'
-                f'display:flex;flex-wrap:wrap;gap:0.2rem 1rem;">'
-                f'<span><b>Type:</b> {fig_type}</span>'
-                f'<span><b>Y-axis:</b> {y_ax}</span>'
-                f'<span><b>Scale:</b> {scale}</span>'
-                f'<span><b>Confidence:</b> {conf}%</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if notes:
-                st.caption(f"Notes: {notes}")
+            # Two-column layout: source image | metadata + table
+            # Columns stack vertically on mobile automatically
+            col_img, col_data = st.columns([2, 3])
 
-            # Data table
-            data_rows = result.get("data", [])
-            if data_rows:
-                df = pd.DataFrame(data_rows)
-                st.dataframe(df, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No data rows extracted.")
+            with col_img:
+                src_img = _img_lookup.get(label)
+                if src_img is not None:
+                    st.image(src_img, caption=label, use_container_width=True)
+
+            with col_data:
+                # Metadata as a compact inline summary
+                fig_type = result.get("figure_type", "?").capitalize()
+                y_ax = result.get("y_axis", "?")
+                scale = result.get("scale", "?").capitalize()
+                conf = result.get("confidence", "?")
+                notes = result.get("notes", "")
+                st.markdown(
+                    f'<div style="background:{NAVY};border-left:4px solid {BLUE};'
+                    f'padding:0.6rem 1rem;border-radius:4px;margin-bottom:0.5rem;'
+                    f'font-size:0.9rem;color:{TEXT_LIGHT};'
+                    f'display:flex;flex-wrap:wrap;gap:0.2rem 1rem;">'
+                    f'<span><b>Type:</b> {fig_type}</span>'
+                    f'<span><b>Y-axis:</b> {y_ax}</span>'
+                    f'<span><b>Scale:</b> {scale}</span>'
+                    f'<span><b>Confidence:</b> {conf}%</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if notes:
+                    st.caption(f"Notes: {notes}")
+
+                # Data table
+                data_rows = result.get("data", [])
+                if data_rows:
+                    df = pd.DataFrame(data_rows)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                else:
+                    st.warning("No data rows extracted.")
 
             st.divider()
 
