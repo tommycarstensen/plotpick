@@ -50,6 +50,12 @@ section[data-testid="stSidebar"] {
     width: 22rem !important;
     min-width: 22rem !important;
 }
+@media (max-width: 768px) {
+    section[data-testid="stSidebar"] {
+        width: 100% !important;
+        min-width: 100% !important;
+    }
+}
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] span,
 section[data-testid="stSidebar"] label,
@@ -205,4 +211,30 @@ hr {
 /* ── Progress bar ────────────────────────────────────────────────────── */
 .stProgress > div > div {
     background-color: var(--rh-blue) !important;
+}
+
+/* ── Mobile responsiveness ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    /* Stack Streamlit columns vertically on mobile */
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+        gap: 0.25rem !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+
+    /* Tighter padding on main block */
+    .stApp > div > div > div > div {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    /* Let metadata boxes wrap */
+    .stApp .stMarkdown div[style*="border-left:4px"] {
+        font-size: 0.82rem !important;
+        line-height: 1.6 !important;
+    }
 }

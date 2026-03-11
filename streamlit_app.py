@@ -759,11 +759,12 @@ with tab_results:
             st.markdown(
                 f'<div style="background:{NAVY};border-left:4px solid {BLUE};'
                 f'padding:0.6rem 1rem;border-radius:4px;margin-bottom:0.5rem;'
-                f'font-size:0.9rem;color:{TEXT_LIGHT};">'
-                f'<b>Type:</b> {fig_type} &nbsp;&middot;&nbsp; '
-                f'<b>Y-axis:</b> {y_ax} &nbsp;&middot;&nbsp; '
-                f'<b>Scale:</b> {scale} &nbsp;&middot;&nbsp; '
-                f'<b>Confidence:</b> {conf}%'
+                f'font-size:0.9rem;color:{TEXT_LIGHT};'
+                f'display:flex;flex-wrap:wrap;gap:0.2rem 1rem;">'
+                f'<span><b>Type:</b> {fig_type}</span>'
+                f'<span><b>Y-axis:</b> {y_ax}</span>'
+                f'<span><b>Scale:</b> {scale}</span>'
+                f'<span><b>Confidence:</b> {conf}%</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -796,34 +797,33 @@ with tab_export:
             combined = pd.DataFrame(all_rows)
             st.dataframe(combined, use_container_width=True, hide_index=True)
 
-            # Format picker
-            fmt_cols = st.columns(6)
-            with fmt_cols[0]:
+            # Format picker (2 rows of 3 -- stacks on mobile via CSS)
+            fmt_row1 = st.columns(3)
+            with fmt_row1[0]:
                 want_md = st.checkbox("Markdown", value=True)
-            with fmt_cols[1]:
+            with fmt_row1[1]:
                 want_xlsx = st.checkbox("Excel", value=True)
-            with fmt_cols[2]:
+            with fmt_row1[2]:
                 want_csv = st.checkbox("CSV", value=False)
-            with fmt_cols[3]:
+            fmt_row2 = st.columns(3)
+            with fmt_row2[0]:
                 want_latex = st.checkbox("LaTeX", value=False)
-            with fmt_cols[4]:
+            with fmt_row2[1]:
                 want_json = st.checkbox("JSON", value=False)
-            with fmt_cols[5]:
+            with fmt_row2[2]:
                 want_r = st.checkbox("R script", value=False)
 
             timestamp = f"{datetime.now():%Y%m%d_%H%M}"
-            download_cols = st.columns(6)
 
             if want_md:
                 md_text = combined.to_markdown(index=False)
                 st.code(md_text, language="markdown")
-                with download_cols[0]:
-                    st.download_button(
-                        "\U0001f4e5 Markdown",
-                        data=md_text.encode("utf-8"),
-                        file_name=f"autoextract_{timestamp}.md",
-                        mime="text/markdown",
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download Markdown",
+                    data=md_text.encode("utf-8"),
+                    file_name=f"autoextract_{timestamp}.md",
+                    mime="text/markdown",
+                )
 
             if want_xlsx:
                 buf = io.BytesIO()
@@ -836,37 +836,34 @@ with tab_export:
                         sheet = label[:31]  # Excel sheet name limit
                         subset = combined[combined["source"] == label]
                         subset.to_excel(writer, index=False, sheet_name=sheet)
-                with download_cols[1]:
-                    st.download_button(
-                        "\U0001f4e5 Excel",
-                        data=buf.getvalue(),
-                        file_name=f"autoextract_{timestamp}.xlsx",
-                        mime=(
-                            "application/vnd.openxmlformats-"
-                            "officedocument.spreadsheetml.sheet"
-                        ),
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download Excel",
+                    data=buf.getvalue(),
+                    file_name=f"autoextract_{timestamp}.xlsx",
+                    mime=(
+                        "application/vnd.openxmlformats-"
+                        "officedocument.spreadsheetml.sheet"
+                    ),
+                )
 
             if want_csv:
                 csv_bytes = combined.to_csv(index=False).encode("utf-8")
-                with download_cols[2]:
-                    st.download_button(
-                        "\U0001f4e5 CSV",
-                        data=csv_bytes,
-                        file_name=f"autoextract_{timestamp}.csv",
-                        mime="text/csv",
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download CSV",
+                    data=csv_bytes,
+                    file_name=f"autoextract_{timestamp}.csv",
+                    mime="text/csv",
+                )
 
             if want_latex:
                 latex_text = combined.to_latex(index=False)
                 st.code(latex_text, language="latex")
-                with download_cols[3]:
-                    st.download_button(
-                        "\U0001f4e5 LaTeX",
-                        data=latex_text.encode("utf-8"),
-                        file_name=f"autoextract_{timestamp}.tex",
-                        mime="text/plain",
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download LaTeX",
+                    data=latex_text.encode("utf-8"),
+                    file_name=f"autoextract_{timestamp}.tex",
+                    mime="text/plain",
+                )
 
             if want_json:
                 # Include full results with metadata
@@ -874,21 +871,19 @@ with tab_export:
                     st.session_state.results, indent=2, ensure_ascii=False,
                 )
                 st.code(full_json, language="json")
-                with download_cols[4]:
-                    st.download_button(
-                        "\U0001f4e5 JSON",
-                        data=full_json.encode("utf-8"),
-                        file_name=f"autoextract_{timestamp}.json",
-                        mime="application/json",
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download JSON",
+                    data=full_json.encode("utf-8"),
+                    file_name=f"autoextract_{timestamp}.json",
+                    mime="application/json",
+                )
 
             if want_r:
                 r_script = _dataframe_to_r(combined)
                 st.code(r_script, language="r")
-                with download_cols[5]:
-                    st.download_button(
-                        "\U0001f4e5 R script",
-                        data=r_script.encode("utf-8"),
-                        file_name=f"autoextract_{timestamp}.R",
-                        mime="text/plain",
-                    )
+                st.download_button(
+                    "\U0001f4e5 Download R script",
+                    data=r_script.encode("utf-8"),
+                    file_name=f"autoextract_{timestamp}.R",
+                    mime="text/plain",
+                )
