@@ -387,13 +387,13 @@ with st.sidebar:
         run_all = st.button(
             "\U0001f680 Extract all",
             disabled=not api_key or n_loaded == 0,
-            use_container_width=True,
+            width="stretch",
         )
     with btn_col2:
         run_selected = st.button(
             "\U0001f3af Extract selected",
             disabled=not api_key or n_selected == 0,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -491,7 +491,7 @@ with tab_gallery:
     for i, (label, img) in enumerate(st.session_state.all_images):
         with gallery_cols[i % 3]:
             st.checkbox(label, key=f"sel_{i}")
-            st.image(img, caption=label, use_container_width=True)
+            st.image(img, caption=label, width="stretch")
 
 with tab_results:
     if not st.session_state.results:
@@ -535,7 +535,7 @@ with tab_results:
             with col_img:
                 src_img = _img_lookup.get(label)
                 if src_img is not None:
-                    st.image(src_img, caption=label, use_container_width=True)
+                    st.image(src_img, caption=label, width="stretch")
 
             with col_data:
                 # Metadata as a compact inline summary
@@ -587,11 +587,11 @@ with tab_results:
                             axis=0,
                         )
                         st.dataframe(
-                            styled, use_container_width=True, hide_index=True,
+                            styled, width="stretch", hide_index=True,
                         )
                     else:
                         st.dataframe(
-                            df, use_container_width=True, hide_index=True,
+                            df, width="stretch", hide_index=True,
                         )
                 else:
                     st.warning("No data rows extracted.")
@@ -612,7 +612,7 @@ with tab_export:
             st.warning("No data rows found across all extractions.")
         else:
             combined = pd.DataFrame(all_rows)
-            st.dataframe(combined, use_container_width=True, hide_index=True)
+            st.dataframe(combined, width="stretch", hide_index=True)
 
             # Format picker (2 rows of 3 -- stacks on mobile via CSS)
             fmt_row1 = st.columns(3)
