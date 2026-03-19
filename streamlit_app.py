@@ -140,13 +140,21 @@ def _resize_for_api(img: Image.Image) -> Image.Image:
     return img
 
 
-def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, Image.Image]]:
-    """Extract individual figures from a PDF.
+def _pix_to_png_bytes(pix: pymupdf.Pixmap) -> bytes:
+    """Convert a PyMuPDF Pixmap to compressed PNG bytes."""
+    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, bytes]]:
+    """Extract individual figures from a PDF as PNG bytes.
 
     Uses caption detection to crop each figure/table separately.
     Falls back to full-page rendering when no captions are found.
     """
-    results: list[tuple[str, Image.Image]] = []
+    results: list[tuple[str, bytes]] = []
     doc = pymupdf.open(stream=data, filetype="pdf")
     mat = pymupdf.Matrix(300 / 72, 300 / 72)  # 300 DPI for better readability
 
@@ -157,25 +165,31 @@ def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, Image.Image]]:
         if elements:
             for elem in elements:
                 pix = page.get_pixmap(matrix=mat, clip=elem["crop_rect"])
-                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
                 label = f"{name} p.{page_idx + 1} {elem['label']}"
-                results.append((label, img))
+                results.append((label, _pix_to_png_bytes(pix)))
         else:
             # No figures detected -- render full page as fallback
             pix = page.get_pixmap(matrix=mat)
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            results.append((f"{name} p.{page_idx + 1}", img))
+            results.append((f"{name} p.{page_idx + 1}", _pix_to_png_bytes(pix)))
 
     doc.close()
     return results
 
 
+def _img_to_png_bytes(raw: bytes) -> bytes:
+    """Convert any supported image format to PNG bytes."""
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _process_zip(
     data: bytes,
     zip_name: str,
-) -> list[tuple[str, Image.Image]]:
-    """Extract images and PDFs from a ZIP archive."""
-    results: list[tuple[str, Image.Image]] = []
+) -> list[tuple[str, bytes]]:
+    """Extract images and PDFs from a ZIP archive as PNG bytes."""
+    results: list[tuple[str, bytes]] = []
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         for entry in sorted(zf.namelist()):
             suffix = PurePosixPath(entry).suffix.lower()
@@ -183,14 +197,13 @@ def _process_zip(
             if suffix == ".pdf":
                 results.extend(_pdf_to_images(zf.read(entry), label))
             elif suffix in IMAGE_EXTENSIONS:
-                img = Image.open(io.BytesIO(zf.read(entry))).convert("RGB")
-                results.append((label, img))
+                results.append((label, _img_to_png_bytes(zf.read(entry))))
     return results
 
 
 def _process_upload(
     uploaded: "UploadedFile",
-) -> list[tuple[str, Image.Image]]:
+) -> list[tuple[str, bytes]]:
     """Route a single uploaded file to the correct processor."""
     name: str = uploaded.name
     data: bytes = uploaded.read()
@@ -201,17 +214,19 @@ def _process_upload(
     if suffix == ".pdf":
         return _pdf_to_images(data, name)
     if suffix in IMAGE_EXTENSIONS:
-        img = Image.open(io.BytesIO(data)).convert("RGB")
-        return [(name, img)]
+        return [(name, _img_to_png_bytes(data))]
     return []
 
 
-def _image_to_base64(img: Image.Image) -> str:
-    """Encode a PIL image as a base64 PNG string for the API."""
-    img = _resize_for_api(img)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+def _image_to_base64(png_bytes: bytes) -> str:
+    """Encode PNG bytes as a base64 string for the API, resizing if needed."""
+    img = Image.open(io.BytesIO(png_bytes))
+    if img.width > MAX_API_WIDTH:
+        img = _resize_for_api(img)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    return base64.b64encode(png_bytes).decode("ascii")
 
 
 # ---------------------------------------------------------------------------
@@ -219,11 +234,11 @@ def _image_to_base64(img: Image.Image) -> str:
 # ---------------------------------------------------------------------------
 def _extract_from_image(
     client: anthropic.Anthropic,
-    img: Image.Image,
+    png_bytes: bytes,
     model: str,
 ) -> dict[str, Any]:
     """Send a single image to Claude and parse the JSON response."""
-    b64 = _image_to_base64(img)
+    b64 = _image_to_base64(png_bytes)
 
     response = client.messages.create(
         model=model,
@@ -361,7 +376,7 @@ with st.sidebar:
     )
 
     if uploaded_files:
-        all_imgs: list[tuple[str, Image.Image]] = []
+        all_imgs: list[tuple[str, bytes]] = []
         for uf in uploaded_files:
             all_imgs.extend(_process_upload(uf))
         if all_imgs:
@@ -416,7 +431,7 @@ if not st.session_state.all_images:
     st.stop()
 
 # -- Determine which images to extract --------------------------------------
-images_to_extract: list[tuple[str, Image.Image]] = []
+images_to_extract: list[tuple[str, bytes]] = []
 if run_all:
     images_to_extract = list(st.session_state.all_images)
 elif run_selected:
@@ -513,8 +528,8 @@ with tab_results:
                 "Cells highlighted in amber are individual values the model "
                 "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
             )
-        # Build a lookup from label -> PIL Image for showing source figures
-        _img_lookup: dict[str, Image.Image] = {
+        # Build a lookup from label -> PNG bytes for showing source figures
+        _img_lookup: dict[str, bytes] = {
             lbl: img for lbl, img in st.session_state.all_images
         }
 
