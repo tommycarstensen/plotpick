@@ -27,6 +27,8 @@ import streamlit as st
 import streamlit.components.v1
 from PIL import Image
 
+from pdf_figures import find_figures_on_page as _find_figures_on_page
+
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -138,245 +140,6 @@ def _resize_for_api(img: Image.Image) -> Image.Image:
     return img
 
 
-_CAPTION_RE = re.compile(
-    r"^(Supplementary\s+)?Fig(ure|\.)\s*\d"
-    r"|^(Supplementary\s+)?Table\s*\d"
-    r"|^Suppl\.?\s+Fig",
-    re.IGNORECASE,
-)
-_MIN_IMG_DIM = 50
-_H_MARGIN = 20   # horizontal padding
-_V_MARGIN = 6    # vertical padding (tight to avoid headers/body text)
-
-
-def _label_from_caption(text: str) -> str | None:
-    """Turn caption text into a short label, e.g. 'Fig_2', 'Table_1'."""
-    m = re.match(
-        r"(Supplementary\s+|Suppl\.?\s+)?(Fig(?:ure|\.)?|Table)\s*(\d+)",
-        text.strip(), re.IGNORECASE,
-    )
-    if not m:
-        return None
-    prefix = "Suppl_" if m.group(1) else ""
-    kind = "Fig" if "fig" in m.group(2).lower() else "Table"
-    return f"{prefix}{kind}_{m.group(3)}"
-
-
-def _is_two_column(text_blocks: list[dict[str, Any]], pw: float) -> bool:
-    """Detect whether a page uses a two-column layout."""
-    left = right = 0
-    for tb in text_blocks:
-        w = tb["bbox"].x1 - tb["bbox"].x0
-        if w > pw * 0.55 or w < 30:
-            continue
-        if len(tb["text"]) < 10:
-            continue
-        mid_x = (tb["bbox"].x0 + tb["bbox"].x1) / 2
-        if mid_x < pw * 0.35:
-            left += 1
-        elif mid_x > pw * 0.65:
-            right += 1
-    return left >= 3 and right >= 3
-
-
-def _column_bounds(
-    cap_x0: float, cap_x1: float, pw: float, two_col: bool,
-) -> tuple[float, float]:
-    """Return (col_left, col_right) limits for the caption's column."""
-    if not two_col:
-        return 0, pw
-    mid = (cap_x0 + cap_x1) / 2
-    center = pw * 0.5
-    if mid < pw * 0.4:
-        return 0, center + 4
-    elif mid > pw * 0.6:
-        return center - 4, pw
-    return 0, pw
-
-
-def _padded_rect(
-    x0: float, y0: float, x1: float, y1: float, pw: float, ph: float,
-) -> pymupdf.Rect:
-    """Create a Rect with padding, clamped to page bounds."""
-    return pymupdf.Rect(
-        max(0, x0 - _H_MARGIN),
-        max(0, y0 - _V_MARGIN),
-        min(pw, x1 + _H_MARGIN),
-        min(ph, y1 + _V_MARGIN),
-    )
-
-
-def _find_figures_on_page(
-    page: Any,
-) -> list[dict[str, Any]]:
-    """Detect figures/tables on a PDF page via caption text.
-
-    Returns list of dicts with keys: label, caption, crop_rect.
-    """
-    pw, ph = page.rect.width, page.rect.height
-
-    # Collect text blocks
-    text_blocks: list[dict[str, Any]] = []
-    for block in page.get_text("dict")["blocks"]:
-        if "lines" not in block:
-            continue
-        full = ""
-        for line in block["lines"]:
-            full += "".join(span["text"] for span in line["spans"])
-        text_blocks.append({
-            "text": full.strip(),
-            "bbox": pymupdf.Rect(block["bbox"]),
-        })
-
-    # Find captions
-    captions: list[dict[str, Any]] = []
-    for tb in text_blocks:
-        if not _CAPTION_RE.match(tb["text"]):
-            continue
-        label = _label_from_caption(tb["text"])
-        if not label:
-            continue
-        captions.append({
-            "label": label,
-            "type": "table" if "table" in label.lower() else "figure",
-            "text": tb["text"][:80],
-            "bbox": tb["bbox"],
-        })
-    captions.sort(key=lambda c: c["bbox"].y0)
-
-    if not captions:
-        return []
-
-    # Embedded images
-    img_rects = [
-        pymupdf.Rect(info["bbox"])
-        for info in page.get_image_info(xrefs=True)
-        if (info["bbox"][2] - info["bbox"][0] > _MIN_IMG_DIM
-            and info["bbox"][3] - info["bbox"][1] > _MIN_IMG_DIM)
-    ]
-    drawings = page.get_drawings()
-    two_col = _is_two_column(text_blocks, pw)
-
-    def _same_column(a: dict, b: dict) -> bool:
-        if not two_col:
-            return True
-        a_mid = (a["bbox"].x0 + a["bbox"].x1) / 2
-        b_mid = (b["bbox"].x0 + b["bbox"].x1) / 2
-        return (a_mid < pw * 0.5) == (b_mid < pw * 0.5)
-
-    elements: list[dict[str, Any]] = []
-    for i, cap in enumerate(captions):
-        # Vertical neighbours in the same column
-        prev_y = 0
-        for j in range(i - 1, -1, -1):
-            if _same_column(cap, captions[j]):
-                prev_y = captions[j]["bbox"].y1
-                break
-        next_y = ph
-        for j in range(i + 1, len(captions)):
-            if _same_column(cap, captions[j]):
-                next_y = captions[j]["bbox"].y0
-                break
-
-        cap_x0, cap_x1 = cap["bbox"].x0, cap["bbox"].x1
-        cap_y0, cap_y1 = cap["bbox"].y0, cap["bbox"].y1
-        col_left, col_right = _column_bounds(cap_x0, cap_x1, pw, two_col)
-
-        if cap["type"] == "figure":
-            # Raster images between same-column neighbours
-            associated = [
-                ir for ir in img_rects
-                if prev_y - 20 <= (ir.y0 + ir.y1) / 2 <= next_y + 20
-            ]
-            if associated:
-                x0 = min(ir.x0 for ir in associated)
-                y0 = min(ir.y0 for ir in associated)
-                x1 = max(ir.x1 for ir in associated)
-                y1 = max(ir.y1 for ir in associated)
-            else:
-                # Vector drawings in the caption's column region
-                nearby = [
-                    d for d in drawings
-                    if (d["rect"].y0 >= prev_y - 10
-                        and d["rect"].y1 <= cap_y1 + 10
-                        and d["rect"].x0 >= cap_x0 - 60
-                        and d["rect"].x1 <= cap_x1 + 60)
-                ]
-                if nearby:
-                    x0 = min(d["rect"].x0 for d in nearby)
-                    y0 = min(d["rect"].y0 for d in nearby)
-                    x1 = max(d["rect"].x1 for d in nearby)
-                    y1 = max(d["rect"].y1 for d in nearby)
-                else:
-                    x0, y0 = cap_x0, prev_y
-                    x1, y1 = cap_x1, cap_y0
-
-            # Include the caption bbox
-            x0 = min(x0, cap_x0)
-            y0 = min(y0, cap_y0)
-            x1 = max(x1, cap_x1)
-            y1 = max(y1, cap_y1)
-
-            # Clamp vertically to same-column neighbours
-            y0 = max(y0, prev_y)
-
-            crop = _padded_rect(x0, y0, x1, y1, pw, ph)
-            crop.x0 = max(crop.x0, col_left)
-            crop.x1 = min(crop.x1, col_right, x1 + 4)
-        else:
-            # Table: find bottom by detecting gap after table rows.
-            cap_mid_x = (cap_x0 + cap_x1) / 2
-            cap_half_w = (cap_x1 - cap_x0) / 2 + 15
-
-            def _scan(candidates: list[dict]) -> tuple[float, float, float]:
-                bottom = cap_y1
-                lx0, lx1 = cap_x0, cap_x1
-                max_gap = None
-                for tb in candidates:
-                    gap = max(0, tb["bbox"].y0 - bottom)
-                    if max_gap is not None and gap > max_gap + 2:
-                        break
-                    if max_gap is None:
-                        max_gap = gap
-                    else:
-                        max_gap = max(max_gap, gap)
-                    bottom = max(bottom, tb["bbox"].y1)
-                    lx0 = min(lx0, tb["bbox"].x0)
-                    lx1 = max(lx1, tb["bbox"].x1)
-                return bottom, lx0, lx1
-
-            below = sorted(
-                [tb for tb in text_blocks
-                 if tb["bbox"].y0 >= cap_y1 - 2
-                 and tb["bbox"].y0 < next_y
-                 and abs((tb["bbox"].x0 + tb["bbox"].x1) / 2 - cap_mid_x)
-                 < cap_half_w],
-                key=lambda tb: tb["bbox"].y0,
-            )
-            table_bottom, tx0, tx1 = _scan(below)
-            if table_bottom - cap_y1 < 20:
-                below_all = sorted(
-                    [tb for tb in text_blocks
-                     if tb["bbox"].y0 >= cap_y1 - 2
-                     and tb["bbox"].y0 < next_y],
-                    key=lambda tb: tb["bbox"].y0,
-                )
-                table_bottom, tx0, tx1 = _scan(below_all)
-
-            crop = _padded_rect(tx0, cap_y0, tx1, table_bottom, pw, ph)
-            # Column clamp -- skip if table is full-width
-            if (tx1 - tx0) < pw * 0.55:
-                crop.x0 = max(crop.x0, col_left)
-                crop.x1 = min(crop.x1, col_right)
-
-        elements.append({
-            "label": cap["label"],
-            "caption": cap["text"][:80],
-            "crop_rect": crop,
-        })
-    return elements
-
-
 def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, Image.Image]]:
     """Extract individual figures from a PDF.
 
@@ -464,7 +227,7 @@ def _extract_from_image(
 
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16384,
         system=SYSTEM_PROMPT,
         messages=[
             {
@@ -662,8 +425,12 @@ elif run_selected:
         if lbl in selected_labels
     ]
 
+@st.cache_resource
+def _get_client(key: str) -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=key)
+
 if images_to_extract:
-    client = anthropic.Anthropic(api_key=api_key)
+    client = _get_client(api_key)
     total = len(images_to_extract)
     results: dict[str, dict[str, Any]] = dict(st.session_state.results)
 
