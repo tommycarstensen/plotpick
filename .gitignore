@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .streamlit/secrets.toml
 .env
+
+# Validation data (large/generated -- not tracked in git)
+validation/pdfs/
+validation/tables/
+validation/figures/
+validation/results/
+validation/.pdf_index.json

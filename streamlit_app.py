@@ -356,7 +356,7 @@ with st.sidebar:
     _MODEL_OPTIONS: dict[str, str] = {
         "Sonnet 4.6 \U0001f4b2\U0001f4b2\U0001f4b2": "claude-sonnet-4-6",
         "Haiku 4.5 \U0001f4b2": "claude-haiku-4-5-20251001",
-        "Opus 4.6 \U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2": "claude-opus-4-6",
+        # "Opus 4.6 \U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2": "claude-opus-4-6",
     }
     model_label: str = st.selectbox(
         "Model",
