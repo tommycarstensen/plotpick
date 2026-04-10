@@ -66,19 +66,19 @@ EXCLUDED_PLOT_TYPES = {
 }
 
 # Target quotas per plot type — 100 per type for statistical power.
-# Set lower for rare types that are hard to find automatically.
+# Stop when any type reaches 200 OR all reach 100.
 PLOT_TYPE_QUOTAS = {
-    "forest_plot": 100,
-    "bar_chart": 100,
-    "line_chart": 100,
-    "kaplan_meier": 100,
-    "box_plot": 100,
-    "scatter_plot": 100,
-    "violin_plot": 100,
-    "histogram": 100,
-    "funnel_plot": 100,
+    "forest_plot": 200,
+    "bar_chart": 200,
+    "line_chart": 200,
+    "kaplan_meier": 200,
+    "box_plot": 200,
+    "scatter_plot": 200,
+    "violin_plot": 200,
+    "histogram": 200,
+    "funnel_plot": 200,
 }
-TOTAL_TARGET = 900
+TOTAL_TARGET = 1800  # 9 types * 200 max
 
 
 def _load_api_key() -> str | None:
@@ -294,8 +294,13 @@ def main() -> None:
         total = sum(type_counts.values())
         if total >= TOTAL_TARGET:
             return True
+        # Stop if ANY quota type reaches 200
+        for pt, q in PLOT_TYPE_QUOTAS.items():
+            if type_counts.get(pt, 0) >= 200:
+                return True
+        # Stop if ALL quota types reach 100
         return all(
-            type_counts.get(pt, 0) >= q
+            type_counts.get(pt, 0) >= 100
             for pt, q in PLOT_TYPE_QUOTAS.items() if q > 0
         )
 

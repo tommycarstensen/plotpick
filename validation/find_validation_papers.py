@@ -15,7 +15,7 @@ import requests
 NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 HERE = Path(__file__).resolve().parent
 DELAY = 0.35
-TARGET = 600  # need large pool; many will be filtered by plot type
+TARGET = 3000  # need large pool; many will be filtered by plot type
 
 CROSS_REF = re.compile(
     r"(Table\s+\d+.{0,80}?Figure\s+\d+)"
@@ -63,6 +63,27 @@ QUERIES = [
     f' AND {_LIFE_SCI} {_OA}',
     f'"waterfall plot" AND "Table" AND {_LIFE_SCI} {_OA}',
     f'"volcano plot" AND "Table" AND {_LIFE_SCI} {_OA}',
+    # Extra queries for underrepresented types — duplicate keywords to
+    # pull in more papers that explicitly mention these plot types
+    f'"histogram" AND "Table 1" AND {_LIFE_SCI} {_OA}',
+    f'"histogram" AND "Table 2" AND {_LIFE_SCI} {_OA}',
+    f'"histogram" AND "frequency distribution" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"funnel plot" AND "publication bias" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"funnel plot" AND "meta-analysis" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"violin plot" AND "Figure" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"box plot" AND "Figure" AND "Table 1" AND {_LIFE_SCI} {_OA}',
+    f'"box plot" AND "Figure" AND "Table 2" AND {_LIFE_SCI} {_OA}',
+    f'"box-and-whisker" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"boxplot" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"scatter plot" AND "Figure" AND "Table 1" AND {_LIFE_SCI} {_OA}',
+    f'"scatter plot" AND "correlation" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"Kaplan-Meier" AND "Table 1" AND "Figure" AND {_LIFE_SCI} {_OA}',
+    f'"Kaplan-Meier" AND "Table 2" AND "Figure" AND {_LIFE_SCI} {_OA}',
+    f'"survival curve" AND "Table" AND "Figure" AND {_LIFE_SCI} {_OA}',
+    f'"forest plot" AND "Table 1" AND "Figure" AND {_LIFE_SCI} {_OA}',
+    f'"forest plot" AND "Table 2" AND "Figure" AND {_LIFE_SCI} {_OA}',
+    f'"bar graph" AND "Table" AND {_LIFE_SCI} {_OA}',
+    f'"line graph" AND "Table" AND {_LIFE_SCI} {_OA}',
 ]
 
 _REPLACE = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2212": "-"})
@@ -120,6 +141,26 @@ def filter_candidates(ids: list[str], n_existing: int = 0) -> list[dict]:
             txt = normalise(ET.tostring(body, encoding="unicode", method="text"))
 
             matches = [m for tup in CROSS_REF.findall(txt) for m in tup if m]
+
+            # Also check table/figure captions for cross-references
+            if not matches:
+                for cap_parent in tables + figs:
+                    cap_el = cap_parent.find("caption")
+                    label_el = cap_parent.find("label")
+                    if cap_el is None:
+                        continue
+                    cap_txt = normalise(
+                        ET.tostring(cap_el, encoding="unicode", method="text")
+                    )
+                    label_txt = normalise(
+                        ET.tostring(label_el, encoding="unicode", method="text")
+                    ) if label_el is not None else ""
+                    combined = label_txt + " " + cap_txt
+                    cap_matches = [
+                        m for tup in CROSS_REF.findall(combined) for m in tup if m
+                    ]
+                    matches.extend(cap_matches)
+
             if not matches:
                 continue
 
