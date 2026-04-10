@@ -1,5 +1,5 @@
 """
-AutoExtract -- AI-powered batch extraction of data from graph images.
+PlotPick -- AI-powered batch extraction of data from graph images.
 
 Upload images, PDFs, or ZIP archives.  Each figure is sent to Claude's
 vision API with a structured extraction prompt.  Results are displayed
@@ -116,7 +116,7 @@ per box/bar/point.  Return structured JSON only.
 # Page config & CSS
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="AutoExtract",
+    page_title="PlotPick",
     page_icon="\U0001f916",
     layout="wide",
 )
@@ -291,7 +291,7 @@ def _extract_from_image(
 def _dataframe_to_r(df: pd.DataFrame) -> str:
     """Convert a pandas DataFrame to an R data.frame() assignment."""
     lines = [
-        "# AutoExtract output -- source directly in R",
+        "# PlotPick output -- source directly in R",
         f"# Generated {datetime.now():%Y-%m-%d %H:%M}",
         "",
         "dat <- data.frame(",
@@ -335,7 +335,7 @@ with st.sidebar:
         "https://avatars.githubusercontent.com/u/243538387?s=200&v=4",
         width=80,
     )
-    st.markdown("### \U0001f916 AutoExtract")
+    st.markdown("### \U0001f916 PlotPick")
     st.caption("Copenhagen Biological & Precision Psychiatry")
 
     # API key: user can type their own, otherwise fall back to secrets.toml
@@ -416,7 +416,7 @@ with st.sidebar:
 # Main area
 # ---------------------------------------------------------------------------
 st.markdown(
-    f'<h2 style="color:{TEXT_LIGHT}; margin-bottom:0;">AutoExtract</h2>',
+    f'<h2 style="color:{TEXT_LIGHT}; margin-bottom:0;">PlotPick</h2>',
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -653,7 +653,7 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download Markdown",
                     data=md_text.encode("utf-8"),
-                    file_name=f"autoextract_{timestamp}.md",
+                    file_name=f"plotpick_{timestamp}.md",
                     mime="text/markdown",
                 )
 
@@ -671,7 +671,7 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download Excel",
                     data=buf.getvalue(),
-                    file_name=f"autoextract_{timestamp}.xlsx",
+                    file_name=f"plotpick_{timestamp}.xlsx",
                     mime=(
                         "application/vnd.openxmlformats-"
                         "officedocument.spreadsheetml.sheet"
@@ -683,7 +683,7 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download CSV",
                     data=csv_bytes,
-                    file_name=f"autoextract_{timestamp}.csv",
+                    file_name=f"plotpick_{timestamp}.csv",
                     mime="text/csv",
                 )
 
@@ -693,7 +693,7 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download LaTeX",
                     data=latex_text.encode("utf-8"),
-                    file_name=f"autoextract_{timestamp}.tex",
+                    file_name=f"plotpick_{timestamp}.tex",
                     mime="text/plain",
                 )
 
@@ -706,7 +706,7 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download JSON",
                     data=full_json.encode("utf-8"),
-                    file_name=f"autoextract_{timestamp}.json",
+                    file_name=f"plotpick_{timestamp}.json",
                     mime="application/json",
                 )
 
@@ -716,6 +716,6 @@ with tab_export:
                 st.download_button(
                     "\U0001f4e5 Download R script",
                     data=r_script.encode("utf-8"),
-                    file_name=f"autoextract_{timestamp}.R",
+                    file_name=f"plotpick_{timestamp}.R",
                     mime="text/plain",
                 )
