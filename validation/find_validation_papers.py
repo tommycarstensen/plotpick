@@ -116,6 +116,33 @@ def collect_ids() -> list[str]:
     return ids
 
 
+# Caption keywords -> plot type (checked in order; first match wins)
+_CAPTION_TYPES = [
+    (r"forest\s+plot", "forest_plot"),
+    (r"Kaplan.Meier|survival\s+curve", "kaplan_meier"),
+    (r"funnel\s+plot", "funnel_plot"),
+    (r"Bland.Altman", "bland_altman"),
+    (r"violin\s+plot", "violin_plot"),
+    (r"box\s*(?:plot|-and-whisker)|boxplot", "box_plot"),
+    (r"scatter\s*plot", "scatter_plot"),
+    (r"histogram|frequency\s+distribution", "histogram"),
+    (r"bar\s*(?:chart|graph|plot)|grouped\s+bar", "bar_chart"),
+    (r"line\s*(?:chart|graph|plot)", "line_chart"),
+    (r"ROC\s+curve|receiver\s+operating", "roc_curve"),
+    (r"heatmap|heat\s+map", "heatmap"),
+]
+_CAPTION_TYPE_RES = [(re.compile(p, re.I), t) for p, t in _CAPTION_TYPES]
+
+
+def guess_plot_type(fig_captions: list[str]) -> str:
+    """Guess plot type from figure caption keywords. Returns '' if unknown."""
+    for cap in fig_captions:
+        for pat, ptype in _CAPTION_TYPE_RES:
+            if pat.search(cap):
+                return ptype
+    return ""
+
+
 def filter_candidates(ids: list[str], n_existing: int = 0) -> list[dict]:
     results: list[dict] = []
     for i, pmcid in enumerate(ids):
@@ -164,6 +191,16 @@ def filter_candidates(ids: list[str], n_existing: int = 0) -> list[dict]:
             if not matches:
                 continue
 
+            # Guess plot type from figure captions (free, no API)
+            fig_captions = []
+            for fig in figs:
+                cap_el = fig.find("caption")
+                if cap_el is not None:
+                    fig_captions.append(
+                        normalise(ET.tostring(cap_el, encoding="unicode", method="text"))
+                    )
+            caption_type = guess_plot_type(fig_captions)
+
             title_el = root.find(".//article-title")
             title = (
                 normalise(ET.tostring(title_el, encoding="unicode", method="text").strip())
@@ -180,14 +217,24 @@ def filter_candidates(ids: list[str], n_existing: int = 0) -> list[dict]:
                 "n_figures": len(figs),
                 "cross_refs": len(matches),
                 "example_ref": matches[0][:120],
+                "caption_type": caption_type,
                 "url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmcid}/",
             })
-            print(f"  [{len(results):3d}] PMC{pmcid}: {title[:80]}")
+            tag = f" [{caption_type}]" if caption_type else ""
+            print(f"  [{len(results):3d}] PMC{pmcid}{tag}: {title[:70]}")
         except Exception as e:
             print(f"  error {pmcid}: {e}")
 
         if (i + 1) % 50 == 0:
-            print(f"  ... {i + 1}/{len(ids)} processed, {len(results)} hits")
+            type_counts = {}
+            for r_ in results:
+                ct = r_.get("caption_type", "")
+                if ct:
+                    type_counts[ct] = type_counts.get(ct, 0) + 1
+            type_summary = ", ".join(f"{t}:{n}" for t, n in
+                                     sorted(type_counts.items(), key=lambda x: -x[1])[:5])
+            print(f"  ... {i + 1}/{len(ids)} processed, {len(results)} hits"
+                  f"  ({type_summary})")
         time.sleep(DELAY)
     return results
 

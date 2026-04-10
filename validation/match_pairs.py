@@ -267,6 +267,21 @@ def main() -> None:
 
     with open(csv_path, encoding="utf-8") as f:
         candidates = list(csv.DictReader(f))
+
+    # Sort candidates so underrepresented caption_types come first.
+    # This ensures we fill rare types before burning API on common ones.
+    _TARGET_TYPES = set(PLOT_TYPE_QUOTAS.keys())
+
+    def _sort_key(row):
+        ct = row.get("caption_type", "")
+        if ct in _TARGET_TYPES:
+            return (0, ct)  # target types first
+        if ct:
+            return (1, ct)  # other known types
+        return (2, "")      # unknown last
+
+    candidates.sort(key=_sort_key)
+
     if args.limit:
         candidates = candidates[: args.limit]
 
