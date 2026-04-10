@@ -14,7 +14,7 @@ import requests
 
 NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 HERE = Path(__file__).resolve().parent
-DELAY = 0.35
+DELAY = 0.12  # NCBI allows 3 req/s without API key
 TARGET = 3000  # need large pool; many will be filtered by plot type
 
 CROSS_REF = re.compile(
@@ -149,12 +149,20 @@ def filter_candidates(ids: list[str], n_existing: int = 0) -> list[dict]:
         if n_existing + len(results) >= TARGET:
             break
         try:
-            r = requests.get(
-                f"{NCBI}/efetch.fcgi",
-                params={"db": "pmc", "id": pmcid, "retmode": "xml"},
-                timeout=60,
-            )
-            r.raise_for_status()
+            for _attempt in range(2):
+                try:
+                    r = requests.get(
+                        f"{NCBI}/efetch.fcgi",
+                        params={"db": "pmc", "id": pmcid, "retmode": "xml"},
+                        timeout=20,
+                    )
+                    r.raise_for_status()
+                    break
+                except Exception:
+                    if _attempt == 0:
+                        time.sleep(1)
+                        continue
+                    raise
             root = ET.fromstring(r.content)
 
             tables = root.findall(".//table-wrap")
