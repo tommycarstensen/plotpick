@@ -1,9 +1,10 @@
 """
 PlotPick -- AI-powered batch extraction of data from graph images.
 
-Upload images, PDFs, or ZIP archives.  Each figure is sent to Claude's
-vision API with a structured extraction prompt.  Results are displayed
-as tables and can be exported in multiple formats.
+Upload images, PDFs, ZIP archives, or enter PubMed IDs to fetch figures
+from PMC Open Access.  Each figure is sent to Claude's vision API with
+a structured extraction prompt.  Results are displayed as tables and can
+be exported in multiple formats.
 
 Run with:  streamlit run streamlit_app.py
 
@@ -15,6 +16,8 @@ import base64
 import io
 import json
 import re
+import tarfile
+import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -23,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 import pandas as pd
 import pymupdf
+import requests
 import streamlit as st
 import streamlit.components.v1
 from PIL import Image
@@ -230,6 +234,118 @@ def _image_to_base64(png_bytes: bytes) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helpers -- PubMed / PMC
+# ---------------------------------------------------------------------------
+_NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+
+def _parse_pubmed_ids(text: str) -> list[str]:
+    """Extract PubMed IDs or PMCIDs from free-text input.
+
+    Accepts: PMID (numeric), PMC + digits, or full PubMed/PMC URLs.
+    Returns normalised IDs like '12345678' or 'PMC1234567'.
+    """
+    ids: list[str] = []
+    for token in re.split(r"[,;\s]+", text.strip()):
+        if not token:
+            continue
+        # Full URL: https://pubmed.ncbi.nlm.nih.gov/12345678/
+        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", token)
+        if m:
+            ids.append(m.group(1))
+            continue
+        # Full URL: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567/
+        m = re.search(r"pmc/articles/(PMC\d+)", token, re.IGNORECASE)
+        if m:
+            ids.append(m.group(1).upper())
+            continue
+        # Bare PMCID
+        m = re.fullmatch(r"(PMC\d+)", token, re.IGNORECASE)
+        if m:
+            ids.append(m.group(1).upper())
+            continue
+        # Bare PMID (numeric)
+        if re.fullmatch(r"\d{5,12}", token):
+            ids.append(token)
+            continue
+    return ids
+
+
+def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
+    """Convert PMIDs to PMCIDs via NCBI ID Converter API.
+
+    Returns {pmid: pmcid_or_None}.  PMCIDs are passed through unchanged.
+    """
+    result: dict[str, str | None] = {}
+    to_convert: list[str] = []
+    for pid in pmids:
+        if pid.upper().startswith("PMC"):
+            result[pid] = pid.upper()
+        else:
+            to_convert.append(pid)
+
+    if not to_convert:
+        return result
+
+    try:
+        r = requests.get(
+            "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/",
+            params={"ids": ",".join(to_convert), "format": "json"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        for rec in data.get("records", []):
+            pmid = rec.get("pmid", "")
+            pmcid = rec.get("pmcid")
+            if pmid in to_convert:
+                result[pmid] = pmcid  # None if no PMC record
+    except Exception:
+        for pid in to_convert:
+            result.setdefault(pid, None)
+    return result
+
+
+def _download_pmc_pdf(pmcid: str) -> bytes | None:
+    """Download a PDF from PMC Open Access. Returns bytes or None."""
+    oa_url = (
+        f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi"
+        f"?id={pmcid}&format=pdf"
+    )
+    try:
+        r = requests.get(oa_url, timeout=15)
+        if not r.ok:
+            return None
+        root = ET.fromstring(r.content)
+        link = root.find(".//link[@format='pdf']")
+        if link is None:
+            link = root.find(".//link[@format='tgz']")
+        if link is None:
+            return None
+        href = link.get("href", "")
+        if not href:
+            return None
+        href = href.replace(
+            "ftp://ftp.ncbi.nlm.nih.gov/",
+            "https://ftp.ncbi.nlm.nih.gov/",
+        )
+        dl = requests.get(href, timeout=120, allow_redirects=True)
+        if not dl.ok:
+            return None
+        if href.endswith(".tar.gz"):
+            with tarfile.open(fileobj=io.BytesIO(dl.content), mode="r:gz") as tar:
+                for member in tar.getmembers():
+                    if member.name.endswith(".pdf"):
+                        f = tar.extractfile(member)
+                        if f:
+                            return f.read()
+            return None
+        return dl.content
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Helpers -- Claude API
 # ---------------------------------------------------------------------------
 def _extract_from_image(
@@ -382,6 +498,48 @@ with st.sidebar:
         if all_imgs:
             st.session_state.all_images = all_imgs
 
+    st.markdown("**-- or --**")
+
+    pubmed_input: str = st.text_area(
+        "PubMed IDs",
+        placeholder="e.g. 38275943, PMC10817106\nor paste PubMed URLs",
+        height=80,
+        help="Enter PMIDs, PMCIDs, or PubMed URLs (one per line or comma-separated). "
+        "PDFs will be fetched from PMC Open Access where available.",
+    )
+    fetch_pubmed = st.button(
+        "\U0001f4e1 Fetch from PubMed",
+        disabled=not pubmed_input.strip(),
+    )
+
+    if fetch_pubmed and pubmed_input.strip():
+        raw_ids = _parse_pubmed_ids(pubmed_input)
+        if not raw_ids:
+            st.error("No valid PubMed IDs found in input.")
+        else:
+            pm_imgs: list[tuple[str, bytes]] = []
+            with st.status(f"Fetching {len(raw_ids)} ID(s)...", expanded=True):
+                mapping = _pmids_to_pmcids(raw_ids)
+                for orig_id, pmcid in mapping.items():
+                    if pmcid is None:
+                        st.write(f"\u26a0\ufe0f  {orig_id} -- no PMC record found")
+                        continue
+                    st.write(f"\U0001f50d  {orig_id} -> {pmcid} -- downloading PDF...")
+                    pdf_bytes = _download_pmc_pdf(pmcid)
+                    if pdf_bytes is None:
+                        st.write(f"\u274c  {pmcid} -- PDF not available (not open access?)")
+                        continue
+                    figures = _pdf_to_images(pdf_bytes, pmcid)
+                    if figures:
+                        pm_imgs.extend(figures)
+                        st.write(f"\u2705  {pmcid} -- {len(figures)} figure(s) extracted")
+                    else:
+                        st.write(f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures detected")
+            if pm_imgs:
+                st.session_state.all_images = (
+                    list(st.session_state.all_images) + pm_imgs
+                )
+
     # Read selection state from checkbox widget keys (updated by Streamlit
     # before the script reruns, so this is always current).
     n_loaded = len(st.session_state.all_images)
@@ -421,13 +579,13 @@ st.markdown(
 )
 st.markdown(
     f'<p style="color:{LIGHT_BLUE}; font-size:0.95rem;">'
-    "Upload figures, then click <b>Extract all</b>.  Each image is sent to "
-    "Claude for automatic data extraction.</p>",
+    "Upload figures or enter PubMed IDs, then click <b>Extract all</b>.  "
+    "Each image is sent to Claude for automatic data extraction.</p>",
     unsafe_allow_html=True,
 )
 
 if not st.session_state.all_images:
-    st.info("Upload files in the sidebar to get started.")
+    st.info("Upload files or enter PubMed IDs in the sidebar to get started.")
     st.stop()
 
 # -- Determine which images to extract --------------------------------------
