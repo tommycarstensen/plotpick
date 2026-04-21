@@ -464,23 +464,26 @@ with st.sidebar:
     user_key: str = st.text_input(
         "Anthropic API key",
         type="password",
-        placeholder="Leave blank to use default key" if default_key else "sk-ant-...",
-        help="Paste your own sk-ant-... key, or leave blank to use the shared default.",
+        placeholder="Optional -- needed for Sonnet" if default_key else "sk-ant-...",
+        help="Paste your own sk-ant-... key. Required for Sonnet 4.6, optional for Haiku 4.5.",
     )
-    api_key: str = user_key or default_key
 
     _MODEL_OPTIONS: dict[str, str] = {
-        "Sonnet 4.6 \U0001f4b2\U0001f4b2\U0001f4b2": "claude-sonnet-4-6",
-        "Haiku 4.5 \U0001f4b2": "claude-haiku-4-5-20251001",
-        # "Opus 4.6 \U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2\U0001f4b2": "claude-opus-4-6",
+        "Haiku 4.5": "claude-haiku-4-5-20251001",
+        "Sonnet 4.6 (bring your own key)": "claude-sonnet-4-6",
     }
     model_label: str = st.selectbox(
         "Model",
         list(_MODEL_OPTIONS),
         index=0,
-        help="Sonnet 4.6 is a good balance of speed and accuracy.",
+        help="Haiku 4.5 is fast and free. Sonnet 4.6 is more accurate but requires your own API key.",
     ) or list(_MODEL_OPTIONS)[0]
     model: str = _MODEL_OPTIONS[model_label]
+    _needs_own_key = model != "claude-haiku-4-5-20251001"
+
+    if _needs_own_key and not user_key:
+        st.info("Sonnet 4.6 requires your own API key.")
+    api_key = user_key if _needs_own_key else (user_key or default_key)
 
     st.divider()
 
@@ -567,6 +570,19 @@ with st.sidebar:
             "\U0001f3af Extract selected",
             disabled=not api_key or n_selected == 0,
             width="stretch",
+        )
+
+    st.divider()
+
+    with st.expander("Benchmarks"):
+        st.image(
+            str(Path(__file__).parent / "assets" / "chartx_by_type.png"),
+            caption="Chart-to-table extraction accuracy by plot type (ChartX benchmark)",
+        )
+        st.caption(
+            "RMSF1 scores on life-science figure types from ChartX. "
+            "Labeled figures (with text annotations) are consistently "
+            "easier for all models."
         )
 
 
