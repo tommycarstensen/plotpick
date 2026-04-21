@@ -579,8 +579,14 @@ with st.sidebar:
             str(Path(__file__).parent / "assets" / "chartx_by_type.png"),
             caption="Chart-to-table extraction accuracy by plot type (ChartX benchmark)",
         )
+        st.image(
+            str(Path(__file__).parent / "assets" / "heatmap_model_type.png"),
+            caption="Recall (%) by model and chart type",
+        )
         st.caption(
-            "RMSF1 scores on life-science figure types from ChartX. "
+            "Recall scores on life-science figure types from ChartX. "
+            "All eight VLMs from four providers outperform DePlot, "
+            "a dedicated chart-to-table model. "
             "Labeled figures (with text annotations) are consistently "
             "easier for all models."
         )
