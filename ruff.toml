@@ -1,0 +1,27 @@
+# Ruff configuration for PlotPick.
+#
+# Enforced in CI (.github/workflows/test.yml, `lint` job) alongside pyright,
+# so new code is held to this standard rather than only being checked by hand.
+
+line-length = 88
+
+[lint]
+# Ruff's default rule set (E4/E7/E9, F) plus the extras that caught real
+# issues in this codebase: bugbear (loop-variable capture), blind-except,
+# datetime hygiene, and the modernisation/refurb rules.
+select = ["E", "F", "W", "B", "BLE", "C4", "DTZ", "FURB", "RUF", "SIM", "UP"]
+
+ignore = [
+    # Export filenames and the generated-R header deliberately use the
+    # viewer's local time -- a UTC timestamp on a downloaded file would be
+    # more confusing, not less. Only two call sites, both user-facing.
+    "DTZ005",
+    # The extraction prompt embeds example JSON whose lines are naturally
+    # longer than the code limit; wrapping them would corrupt the example.
+    "E501",
+]
+
+[lint.per-file-ignores]
+# Tests append the package root to sys.path before importing, which has to
+# happen after the stdlib imports.
+"tests/*" = ["E402"]

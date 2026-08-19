@@ -174,7 +174,13 @@ def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
             cap_mid_x = (cap_x0 + cap_x1) / 2
             cap_half_w = (cap_x1 - cap_x0) / 2 + 15
 
-            def _scan(candidates: list[dict]) -> tuple[float, float, float]:
+            def _scan(
+                candidates: list[dict],
+                *,
+                cap_y1: float = cap_y1,
+                cap_x0: float = cap_x0,
+                cap_x1: float = cap_x1,
+            ) -> tuple[float, float, float]:
                 bottom = cap_y1
                 lx0, lx1 = cap_x0, cap_x1
                 max_gap = None

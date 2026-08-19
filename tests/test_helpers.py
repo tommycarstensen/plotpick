@@ -7,10 +7,10 @@ NUM_RE = re.compile(r"-?\d[\d,]*\.?\d*(?:[eE][+-]?\d+)?")
 
 def extract_numbers(text):
     """Extract all numeric values from a string."""
-    return set(
+    return {
         float(m.group().replace(",", ""))
         for m in NUM_RE.finditer(text)
-    )
+    }
 
 
 def compute_recall(extracted, ground_truth, tolerance=0.05):
