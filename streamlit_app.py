@@ -8,7 +8,8 @@ be exported in multiple formats.
 
 Run with:  streamlit run streamlit_app.py
 
-Requires an Anthropic API key in .streamlit/secrets.toml:
+Requires an Anthropic API key, supplied either as the ANTHROPIC_API_KEY
+environment variable or in .streamlit/secrets.toml:
     ANTHROPIC_API_KEY = "sk-ant-..."
 """
 
@@ -31,6 +32,16 @@ import streamlit as st
 import streamlit.components.v1
 from PIL import Image
 
+from models import (
+    DEFAULT_MODEL,
+    MODEL_LABELS,
+    MODELS,
+    MODELS_BY_LABEL,
+    extract_blocked_reason,
+    missing_key_message,
+    resolve_api_key,
+    shared_key_from_environment,
+)
 from pdf_figures import find_figures_on_page as _find_figures_on_page
 
 if TYPE_CHECKING:
@@ -454,36 +465,43 @@ with st.sidebar:
     st.markdown("### \U0001f916 PlotPick")
     st.caption("Copenhagen Biological & Precision Psychiatry")
 
-    # API key: user can type their own, otherwise fall back to secrets.toml
+    # API key: a key typed here always wins; otherwise fall back to
+    # secrets.toml, then to the ANTHROPIC_API_KEY environment variable.
     default_key: str = ""
     try:
-        default_key = st.secrets["ANTHROPIC_API_KEY"]
-    except (FileNotFoundError, KeyError):
+        default_key = str(st.secrets["ANTHROPIC_API_KEY"]).strip()
+    except Exception:
+        # Streamlit raises different exception types depending on version
+        # (FileNotFoundError, KeyError, StreamlitSecretNotFoundError) when no
+        # secrets file exists.  A missing secrets file is not an error here.
         pass
+    if not default_key:
+        default_key = shared_key_from_environment()
 
     user_key: str = st.text_input(
         "Anthropic API key",
         type="password",
-        placeholder="Optional -- needed for Sonnet" if default_key else "sk-ant-...",
-        help="Paste your own sk-ant-... key. Required for Sonnet 4.6, optional for Haiku 4.5.",
+        placeholder="Optional -- already configured" if default_key else "sk-ant-...",
+        help=(
+            "Paste your own sk-ant-... key. Required for Opus 5; optional for "
+            "the other models, which fall back to the app's configured key."
+        ),
     )
 
-    _MODEL_OPTIONS: dict[str, str] = {
-        "Haiku 4.5": "claude-haiku-4-5-20251001",
-        "Sonnet 4.6 (bring your own key)": "claude-sonnet-4-6",
-    }
     model_label: str = st.selectbox(
         "Model",
-        list(_MODEL_OPTIONS),
+        MODEL_LABELS,
         index=0,
-        help="Haiku 4.5 is fast and free. Sonnet 4.6 is more accurate but requires your own API key.",
-    ) or list(_MODEL_OPTIONS)[0]
-    model: str = _MODEL_OPTIONS[model_label]
-    _needs_own_key = model != "claude-haiku-4-5-20251001"
+        help="\n\n".join(f"**{m.short_name}** -- {m.blurb}" for m in MODELS),
+    ) or DEFAULT_MODEL.label
+    selected_model = MODELS_BY_LABEL[model_label]
+    model: str = selected_model.model_id
 
-    if _needs_own_key and not user_key:
-        st.info("Sonnet 4.6 requires your own API key.")
-    api_key = user_key if _needs_own_key else (user_key or default_key)
+    api_key = resolve_api_key(selected_model, user_key, default_key)
+    st.caption(selected_model.blurb)
+    if not api_key:
+        # Never leave the Extract buttons disabled without saying why.
+        st.warning(missing_key_message(selected_model))
 
     st.divider()
 
@@ -558,19 +576,33 @@ with st.sidebar:
 
     st.divider()
 
+    # A disabled button must always explain itself -- see issue #2, where the
+    # only symptom was a not-allowed cursor and no message anywhere.
+    _all_blocked = extract_blocked_reason(
+        api_key, n_loaded, n_selected, selected_only=False
+    )
+    _sel_blocked = extract_blocked_reason(
+        api_key, n_loaded, n_selected, selected_only=True
+    )
+
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
         run_all = st.button(
             "\U0001f680 Extract all",
-            disabled=not api_key or n_loaded == 0,
+            disabled=_all_blocked is not None,
+            help=_all_blocked or f"Extract all {n_loaded} figure(s).",
             width="stretch",
         )
     with btn_col2:
         run_selected = st.button(
             "\U0001f3af Extract selected",
-            disabled=not api_key or n_selected == 0,
+            disabled=_sel_blocked is not None,
+            help=_sel_blocked or f"Extract the {n_selected} selected figure(s).",
             width="stretch",
         )
+
+    if _all_blocked and n_loaded:
+        st.caption(f"\u26a0\ufe0f  {_all_blocked}")
 
     st.divider()
 
@@ -630,7 +662,7 @@ if images_to_extract:
     results: dict[str, dict[str, Any]] = dict(st.session_state.results)
 
     with st.status(
-        f"Extracting {total} figure(s) with {model_label.split(chr(0x1f4b2))[0].strip()}...",
+        f"Extracting {total} figure(s) with {selected_model.short_name}...",
         expanded=True,
     ) as status:
         progress = st.progress(0)
