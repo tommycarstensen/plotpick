@@ -38,6 +38,7 @@ from models import (
     MODELS,
     MODELS_BY_LABEL,
     extract_blocked_reason,
+    figure_summary,
     missing_key_message,
     resolve_api_key,
     shared_key_from_environment,
@@ -311,7 +312,12 @@ def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
             pmcid = rec.get("pmcid")
             if pmid in to_convert:
                 result[pmid] = pmcid  # None if no PMC record
-    except Exception:
+    except (requests.RequestException, ValueError) as exc:
+        # Only network and JSON-decode failures are expected here.  Anything
+        # else is a bug and must propagate rather than be reported to the user
+        # as "no PMC record found", which is what a blanket handler did.
+        st.warning(f"NCBI ID lookup failed ({exc}). Could not resolve: "
+                   f"{', '.join(to_convert)}")
         for pid in to_convert:
             result.setdefault(pid, None)
     return result
@@ -352,7 +358,10 @@ def _download_pmc_pdf(pmcid: str) -> bytes | None:
                             return f.read()
             return None
         return dl.content
-    except Exception:
+    except (requests.RequestException, tarfile.TarError) as exc:
+        # As above: narrow to the failures this function can actually cause.
+        # A blanket handler turned every bug into "PDF not available".
+        st.warning(f"Download failed for {pmcid} ({exc}).")
         return None
 
 
@@ -398,8 +407,7 @@ def _extract_from_image(
     text = raw_text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
+    text = text.removesuffix("```")
     text = text.strip()
 
     try:
@@ -427,7 +435,7 @@ def _dataframe_to_r(df: pd.DataFrame) -> str:
         vals = df[col].tolist()
         if df[col].dtype == object:
             escaped = [
-                "NA" if pd.isna(v) else f'"{str(v)}"' for v in vals
+                "NA" if pd.isna(v) else f'"{v!s}"' for v in vals
             ]
             vec = f"  {col} = c({', '.join(escaped)})"
         else:
@@ -467,14 +475,14 @@ with st.sidebar:
 
     # API key: a key typed here always wins; otherwise fall back to
     # secrets.toml, then to the ANTHROPIC_API_KEY environment variable.
+    #
+    # load_if_toml_exists() reports a missing secrets file as False rather
+    # than raising, and still raises on a *malformed* one -- so this reads
+    # the optional file without a try/except that would also swallow a real
+    # parse error.
     default_key: str = ""
-    try:
+    if st.secrets.load_if_toml_exists() and "ANTHROPIC_API_KEY" in st.secrets:
         default_key = str(st.secrets["ANTHROPIC_API_KEY"]).strip()
-    except Exception:
-        # Streamlit raises different exception types depending on version
-        # (FileNotFoundError, KeyError, StreamlitSecretNotFoundError) when no
-        # secrets file exists.  A missing secrets file is not an error here.
-        pass
     if not default_key:
         default_key = shared_key_from_environment()
 
@@ -741,9 +749,7 @@ with tab_results:
                 "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
             )
         # Build a lookup from label -> PNG bytes for showing source figures
-        _img_lookup: dict[str, bytes] = {
-            lbl: img for lbl, img in st.session_state.all_images
-        }
+        _img_lookup: dict[str, bytes] = dict(st.session_state.all_images)
 
         for label, result in st.session_state.results.items():
             st.markdown(
@@ -766,11 +772,12 @@ with tab_results:
 
             with col_data:
                 # Metadata as a compact inline summary
-                fig_type = result.get("figure_type", "?").capitalize()
-                y_ax = result.get("y_axis", "?")
-                scale = result.get("scale", "?").capitalize()
-                conf = result.get("confidence", "?")
-                notes = result.get("notes", "")
+                summary = figure_summary(result)
+                fig_type = summary["figure_type"]
+                y_ax = summary["y_axis"]
+                scale = summary["scale"]
+                conf = summary["confidence"]
+                notes = summary["notes"]
                 st.markdown(
                     f'<div style="background:{NAVY};border-left:4px solid {BLUE};'
                     f'padding:0.6rem 1rem;border-radius:4px;margin-bottom:0.5rem;'
@@ -806,9 +813,9 @@ with tab_results:
 
                     if uncertain_mask.any().any():
                         styled = df.style.apply(
-                            lambda col: [
+                            lambda col, mask=uncertain_mask: [
                                 "background-color: rgba(255, 170, 0, 0.25)"
-                                if uncertain_mask.at[idx, col.name] else ""
+                                if mask.at[idx, col.name] else ""
                                 for idx in col.index
                             ],
                             axis=0,

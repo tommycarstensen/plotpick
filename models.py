@@ -130,3 +130,22 @@ def extract_blocked_reason(
     if selected_only and n_selected == 0:
         return "Tick at least one figure in the gallery first."
     return None
+
+
+def figure_summary(result: dict) -> dict[str, str]:
+    """Display strings for the metadata banner above an extracted table.
+
+    Every field can legitimately come back as JSON ``null``: the extraction
+    prompt tells the model to use null for anything it cannot read.  A
+    ``dict.get`` default only fires for a *missing* key, so a present-but-null
+    value used to reach ``.capitalize()`` and raise AttributeError, crashing
+    the Results tab after a successful extraction.
+    """
+    confidence = result.get("confidence")
+    return {
+        "figure_type": str(result.get("figure_type") or "?").capitalize(),
+        "y_axis": str(result.get("y_axis") or "?"),
+        "scale": str(result.get("scale") or "?").capitalize(),
+        "confidence": "?" if confidence is None else str(confidence),
+        "notes": str(result.get("notes") or ""),
+    }

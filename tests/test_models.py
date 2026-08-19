@@ -11,13 +11,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from models import (  # noqa: E402
+from models import (
     DEFAULT_MODEL,
     ENV_VAR,
     MODEL_LABELS,
     MODELS,
     MODELS_BY_LABEL,
     extract_blocked_reason,
+    figure_summary,
     missing_key_message,
     resolve_api_key,
     shared_key_from_environment,
@@ -131,3 +132,38 @@ def test_button_enabled_when_key_and_images_present():
     assert extract_blocked_reason(
         SHARED, n_loaded=3, n_selected=1, selected_only=False
     ) is None
+
+
+# -- figure_summary: JSON null crashed the Results tab ----------------------
+
+def test_null_fields_do_not_crash():
+    """`"scale": null` reached .capitalize() and raised AttributeError."""
+    summary = figure_summary(
+        {"figure_type": None, "y_axis": None, "scale": None,
+         "confidence": None, "notes": None}
+    )
+    assert summary == {
+        "figure_type": "?", "y_axis": "?", "scale": "?",
+        "confidence": "?", "notes": "",
+    }
+
+
+def test_missing_fields_fall_back():
+    assert figure_summary({})["scale"] == "?"
+
+
+def test_populated_fields_are_capitalised():
+    summary = figure_summary(
+        {"figure_type": "boxplot", "y_axis": "IL-6", "scale": "linear",
+         "confidence": 76, "notes": "overlapping"}
+    )
+    assert summary["figure_type"] == "Boxplot"
+    assert summary["scale"] == "Linear"
+    assert summary["y_axis"] == "IL-6"
+    assert summary["confidence"] == "76"
+    assert summary["notes"] == "overlapping"
+
+
+def test_zero_confidence_is_not_reported_as_unknown():
+    """0 is falsy but a real score -- it must not become "?"."""
+    assert figure_summary({"confidence": 0})["confidence"] == "0"
