@@ -122,7 +122,7 @@ Example -- multi-panel boxplot with timepoints:
 
 IMPORTANT: Return ONLY valid JSON. No text before or after the JSON object.
 The "data" array must NEVER be empty if the figure contains any visual elements.
-"""
+"""  # noqa: E501 -- example JSON rows; wrapping them would corrupt the example.
 
 USER_PROMPT = """\
 Extract ALL numerical data from this figure.  There should be one row
@@ -560,14 +560,21 @@ with st.sidebar:
                     st.write(f"\U0001f50d  {orig_id} -> {pmcid} -- downloading PDF...")
                     pdf_bytes = _download_pmc_pdf(pmcid)
                     if pdf_bytes is None:
-                        st.write(f"\u274c  {pmcid} -- PDF not available (not open access?)")
+                        st.write(
+                            f"\u274c  {pmcid} -- PDF not available (not open access?)"
+                        )
                         continue
                     figures = _pdf_to_images(pdf_bytes, pmcid)
                     if figures:
                         pm_imgs.extend(figures)
-                        st.write(f"\u2705  {pmcid} -- {len(figures)} figure(s) extracted")
+                        st.write(
+                            f"\u2705  {pmcid} -- {len(figures)} figure(s) extracted"
+                        )
                     else:
-                        st.write(f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures detected")
+                        st.write(
+                            f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures "
+                            "detected"
+                        )
             if pm_imgs:
                 st.session_state.all_images = (
                     list(st.session_state.all_images) + pm_imgs
@@ -621,7 +628,9 @@ with st.sidebar:
     with st.expander("Benchmarks"):
         st.image(
             str(Path(__file__).parent / "assets" / "chartx_by_type.png"),
-            caption="Chart-to-table extraction accuracy by plot type (ChartX benchmark)",
+            caption=(
+                "Chart-to-table extraction accuracy by plot type (ChartX benchmark)"
+            ),
         )
         st.image(
             str(Path(__file__).parent / "assets" / "heatmap_model_type.png"),
@@ -664,9 +673,11 @@ elif run_selected:
         if lbl in selected_labels
     ]
 
+
 @st.cache_resource
 def _get_client(key: str) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=key)
+
 
 if images_to_extract:
     client = _get_client(api_key)

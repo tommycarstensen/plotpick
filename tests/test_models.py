@@ -4,13 +4,9 @@ Regression cover for issue #2, where Extract stayed disabled with no
 explanation because no API key had been configured.
 """
 
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models import (
     DEFAULT_MODEL,

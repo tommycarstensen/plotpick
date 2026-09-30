@@ -215,5 +215,7 @@ def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
                 crop.x0 = max(crop.x0, col_left)
                 crop.x1 = min(crop.x1, col_right)
 
-        elements.append({"label": cap["label"], "caption": cap["text"][:80], "crop_rect": crop})
+        elements.append(
+            {"label": cap["label"], "caption": cap["text"][:80], "crop_rect": crop}
+        )
     return elements

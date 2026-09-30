@@ -16,12 +16,8 @@ ignore = [
     # viewer's local time -- a UTC timestamp on a downloaded file would be
     # more confusing, not less. Only two call sites, both user-facing.
     "DTZ005",
-    # The extraction prompt embeds example JSON whose lines are naturally
-    # longer than the code limit; wrapping them would corrupt the example.
-    "E501",
 ]
 
-[lint.per-file-ignores]
-# Tests append the package root to sys.path before importing, which has to
-# happen after the stdlib imports.
-"tests/*" = ["E402"]
+# Line length (E501) is enforced. The one exception, the example JSON rows in
+# the extraction prompt, carries its own `# noqa: E501` so that pycodestyle
+# (run in CI with the same 88-column limit, see setup.cfg) agrees with ruff.

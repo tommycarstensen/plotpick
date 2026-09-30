@@ -1,12 +1,7 @@
 """Tests for pdf_figures.py caption detection and figure extraction."""
 
-import sys
-from pathlib import Path
-
 import pytest
 
-# Add parent dir so we can import pdf_figures
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pdf_figures import CAPTION_RE
 
 

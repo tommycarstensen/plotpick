@@ -1,4 +1,4 @@
-"""Helper functions for tests -- mirrors metrics from validation/benchmarks/shared.py."""
+"""Test helpers -- mirrors the metrics in validation/benchmarks/shared.py."""
 
 import re
 
