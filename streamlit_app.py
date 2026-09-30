@@ -37,9 +37,11 @@ from models import (
     MODEL_LABELS,
     MODELS,
     MODELS_BY_LABEL,
+    ExtractionError,
     extract_blocked_reason,
     figure_summary,
     missing_key_message,
+    reply_text,
     resolve_api_key,
     shared_key_from_environment,
 )
@@ -401,7 +403,7 @@ def _extract_from_image(
         ],
     )
 
-    raw_text = response.content[0].text  # type: ignore[union-attr]
+    raw_text = reply_text(response)
 
     # Strip markdown code fences if present
     text = raw_text.strip()
@@ -473,28 +475,19 @@ with st.sidebar:
     st.markdown("### \U0001f916 PlotPick")
     st.caption("Copenhagen Biological & Precision Psychiatry")
 
-    # API key: a key typed here always wins; otherwise fall back to
-    # secrets.toml, then to the ANTHROPIC_API_KEY environment variable.
+    # API key: the app owner's, from secrets.toml or else the
+    # ANTHROPIC_API_KEY environment variable, pays for Sonnet and Haiku.
+    # Opus runs only on a key the visitor pastes in (see models.py).
     #
     # load_if_toml_exists() reports a missing secrets file as False rather
     # than raising, and still raises on a *malformed* one -- so this reads
     # the optional file without a try/except that would also swallow a real
     # parse error.
-    default_key: str = ""
+    shared_key: str = ""
     if st.secrets.load_if_toml_exists() and "ANTHROPIC_API_KEY" in st.secrets:
-        default_key = str(st.secrets["ANTHROPIC_API_KEY"]).strip()
-    if not default_key:
-        default_key = shared_key_from_environment()
-
-    user_key: str = st.text_input(
-        "Anthropic API key",
-        type="password",
-        placeholder="Optional -- already configured" if default_key else "sk-ant-...",
-        help=(
-            "Paste your own sk-ant-... key. Required for Opus 5; optional for "
-            "the other models, which fall back to the app's configured key."
-        ),
-    )
+        shared_key = str(st.secrets["ANTHROPIC_API_KEY"]).strip()
+    if not shared_key:
+        shared_key = shared_key_from_environment()
 
     model_label: str = st.selectbox(
         "Model",
@@ -504,9 +497,20 @@ with st.sidebar:
     ) or DEFAULT_MODEL.label
     selected_model = MODELS_BY_LABEL[model_label]
     model: str = selected_model.model_id
-
-    api_key = resolve_api_key(selected_model, user_key, default_key)
     st.caption(selected_model.blurb)
+
+    # The key box exists only for bring-your-own-key models, so visitors
+    # using Sonnet or Haiku are never asked for a key.
+    user_key: str = ""
+    if selected_model.needs_own_key:
+        user_key = st.text_input(
+            "Your Anthropic API key",
+            type="password",
+            placeholder="sk-ant-...",
+            help=f"{selected_model.short_name} is billed to your own key.",
+        )
+
+    api_key = resolve_api_key(selected_model, user_key, shared_key)
     if not api_key:
         # Never leave the Extract buttons disabled without saying why.
         st.warning(missing_key_message(selected_model))
@@ -682,7 +686,7 @@ if images_to_extract:
                 results[label] = result
                 n_rows = len(result.get("data", []))
                 st.write(f"\u2705  {n_rows} row(s) extracted")
-            except (json.JSONDecodeError, anthropic.APIError) as exc:
+            except (json.JSONDecodeError, ExtractionError, anthropic.APIError) as exc:
                 results[label] = {"error": str(exc), "data": []}
                 st.write(f"\u274c  Failed: {exc}")
 

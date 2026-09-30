@@ -6,6 +6,7 @@ explanation because no API key had been configured.
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,7 +20,9 @@ from models import (
     MODELS_BY_LABEL,
     extract_blocked_reason,
     figure_summary,
+    ExtractionError,
     missing_key_message,
+    reply_text,
     resolve_api_key,
     shared_key_from_environment,
 )
@@ -33,52 +36,60 @@ FREE = next(m for m in MODELS if not m.needs_own_key)
 
 # -- catalogue --------------------------------------------------------------
 
-def test_default_is_sonnet_not_haiku():
-    """Sonnet beats Haiku on ChartX (92.2% vs 88.5%), so it is the default."""
-    assert DEFAULT_MODEL.short_name == "Sonnet 4.6"
-    assert DEFAULT_MODEL.model_id == "claude-sonnet-4-6"
+def test_default_is_latest_sonnet():
+    assert DEFAULT_MODEL.short_name == "Sonnet 5.5"
+    assert DEFAULT_MODEL.model_id == "claude-sonnet-5-5"
     assert not DEFAULT_MODEL.needs_own_key
 
 
+def test_model_ids_are_current():
+    assert [m.model_id for m in MODELS] == [
+        "claude-sonnet-5-5",
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5-5",
+    ]
+
+
 def test_only_opus_requires_own_key():
+    """The owner pays for Sonnet and Haiku only."""
     byok = {m.short_name for m in MODELS if m.needs_own_key}
-    assert byok == {"Opus 5"}
-
-
-def test_haiku_available_without_own_key():
-    haiku = MODELS_BY_LABEL["Haiku 4.5"]
-    assert not haiku.needs_own_key
-    assert resolve_api_key(haiku, "", SHARED) == SHARED
+    assert byok == {"Opus 5.5"}
 
 
 def test_labels_are_unique_and_flag_byok():
     assert len(MODEL_LABELS) == len(set(MODEL_LABELS)) == len(MODELS)
-    assert MODELS_BY_LABEL["Opus 5 (bring your own key)"].needs_own_key
-    assert "bring your own key" not in MODELS_BY_LABEL["Haiku 4.5"].label
+    assert MODEL_LABELS == [
+        "Sonnet 5.5",
+        "Haiku 4.5",
+        "Opus 5.5 (bring your own key)",
+    ]
+    assert set(MODELS_BY_LABEL) == set(MODEL_LABELS)
 
 
 # -- key resolution ---------------------------------------------------------
 
-def test_shared_key_used_for_non_byok_models():
-    assert resolve_api_key(FREE, "", SHARED) == SHARED
+@pytest.mark.parametrize("model", [m for m in MODELS if not m.needs_own_key])
+def test_shared_key_pays_for_sonnet_and_haiku(model):
+    assert resolve_api_key(model, "", SHARED) == SHARED
 
 
 def test_shared_key_never_used_for_byok_model():
     assert resolve_api_key(BYOK, "", SHARED) == ""
 
 
-def test_own_key_wins_over_shared():
-    assert resolve_api_key(FREE, OWN, SHARED) == OWN
+def test_byok_model_uses_the_visitors_key():
     assert resolve_api_key(BYOK, OWN, SHARED) == OWN
 
 
 @pytest.mark.parametrize("blank", ["", "   ", None])
 def test_blank_keys_are_normalised(blank):
-    assert resolve_api_key(FREE, blank, blank) == ""
+    assert resolve_api_key(FREE, "", blank) == ""
+    assert resolve_api_key(BYOK, blank, SHARED) == ""
 
 
 def test_whitespace_is_stripped():
-    assert resolve_api_key(FREE, f"  {OWN}  ", "") == OWN
+    assert resolve_api_key(FREE, "", f"  {SHARED}  ") == SHARED
+    assert resolve_api_key(BYOK, f"  {OWN}  ", "") == OWN
 
 
 def test_env_var_is_read(monkeypatch):
@@ -90,15 +101,16 @@ def test_env_var_is_read(monkeypatch):
 
 # -- disabled-button messaging (issue #2) -----------------------------------
 
-def test_missing_key_message_names_the_env_var():
+def test_missing_shared_key_message_names_the_config_locations():
     msg = missing_key_message(FREE)
     assert ENV_VAR in msg and "secrets.toml" in msg
+    assert "paste" not in msg.lower()
 
 
 def test_missing_key_message_for_byok_suggests_alternatives():
     msg = missing_key_message(BYOK)
-    assert "Opus 5" in msg
-    assert "Sonnet 4.6" in msg and "Haiku 4.5" in msg
+    assert "Opus 5.5" in msg
+    assert "Sonnet 5.5" in msg and "Haiku 4.5" in msg
 
 
 def test_no_key_blocks_both_buttons_with_a_reason():
@@ -132,6 +144,46 @@ def test_button_enabled_when_key_and_images_present():
     assert extract_blocked_reason(
         SHARED, n_loaded=3, n_selected=1, selected_only=False
     ) is None
+
+
+# -- reply_text: Sonnet 5.5 / Opus 5.5 lead with a thinking block -----------
+
+def _block(kind, text=""):
+    return SimpleNamespace(type=kind, text=text, thinking="")
+
+
+def _response(*blocks, stop_reason="end_turn", category=None):
+    return SimpleNamespace(
+        content=list(blocks),
+        stop_reason=stop_reason,
+        stop_details=SimpleNamespace(category=category) if category else None,
+    )
+
+
+def test_reply_text_skips_a_leading_thinking_block():
+    """content[0] is an empty thinking block under adaptive thinking."""
+    response = _response(_block("thinking"), _block("text", '{"data": []}'))
+    assert reply_text(response) == '{"data": []}'
+
+
+def test_reply_text_plain_text_response():
+    assert reply_text(_response(_block("text", "{}"))) == "{}"
+
+
+def test_refusal_is_reported_with_its_category():
+    with pytest.raises(ExtractionError, match=r"declined.*bio"):
+        reply_text(_response(stop_reason="refusal", category="bio"))
+
+
+def test_truncated_answer_is_reported():
+    response = _response(_block("text", '{"data": [1, 2'), stop_reason="max_tokens")
+    with pytest.raises(ExtractionError, match="output-token limit"):
+        reply_text(response)
+
+
+def test_empty_answer_is_reported():
+    with pytest.raises(ExtractionError, match="no text"):
+        reply_text(_response(_block("thinking")))
 
 
 # -- figure_summary: JSON null crashed the Results tab ----------------------

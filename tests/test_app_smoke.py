@@ -61,21 +61,49 @@ def test_env_var_key_is_picked_up(app, monkeypatch):
         assert "Upload" in button.help
 
 
+OPUS = "Opus 5.5 (bring your own key)"
+
+
 def test_model_choices_and_default(app):
+    """Visitors land on Sonnet."""
     at = app().run()
     options = at.selectbox[0].options
-    assert options == [
-        "Sonnet 4.6",
-        "Haiku 4.5",
-        "Opus 5 (bring your own key)",
-    ]
-    assert at.selectbox[0].value == "Sonnet 4.6"
+    assert options == ["Sonnet 5.5", "Haiku 4.5", OPUS]
+    assert at.selectbox[0].value == "Sonnet 5.5"
 
 
-def test_opus_refuses_the_shared_key(app, monkeypatch):
-    """Only Opus requires the user's own key; the env key must not satisfy it."""
+@pytest.mark.parametrize("model", ["Sonnet 5.5", "Haiku 4.5"])
+def test_sonnet_and_haiku_run_on_the_app_key(app, monkeypatch, model):
+    """No key box, no warning: the owner's key pays."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     at = app().run()
-    at.selectbox[0].set_value("Opus 5 (bring your own key)").run()
+    at.selectbox[0].set_value(model).run()
     assert not at.exception
-    assert any("requires your own" in w.value for w in at.warning)
+    assert not [t for t in at.text_input if "API key" in t.label]
+    assert not [w for w in at.warning if "API key" in w.value]
+    for button in (b for b in at.button if "Extract" in b.label):
+        assert "Upload" in button.help
+
+
+def test_opus_refuses_the_app_key(app, monkeypatch):
+    """The owner does not pay for Opus: it needs the visitor's own key."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    at = app().run()
+    at.selectbox[0].set_value(OPUS).run()
+    assert not at.exception
+    assert [t for t in at.text_input if "API key" in t.label]
+    assert any("your own" in w.value for w in at.warning)
+    for button in (b for b in at.button if "Extract" in b.label):
+        assert "API key" in button.help
+
+
+def test_opus_runs_on_a_pasted_key(app, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    at = app().run()
+    at.selectbox[0].set_value(OPUS).run()
+    key_box = next(t for t in at.text_input if "API key" in t.label)
+    key_box.input("sk-ant-visitor").run()
+    assert not at.exception
+    assert not [w for w in at.warning if "API key" in w.value]
+    for button in (b for b in at.button if "Extract" in b.label):
+        assert "Upload" in button.help

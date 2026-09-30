@@ -3,15 +3,18 @@
 Deliberately free of Streamlit imports so the selection rules can be unit
 tested without spinning up a Streamlit script run.
 
-Which models need the user's own key is a policy decision, not a technical
-one: the shared key that ships with the hosted demo covers the two cheaper
-models, and Opus is left as bring-your-own-key.
+Which models run on the app owner's key is a policy decision, not a
+technical one: the owner's key (secrets.toml or ANTHROPIC_API_KEY) pays for
+Sonnet and Haiku, and visitors never see a key box for those.  Opus is
+bring-your-own-key -- the owner does not pay for it -- so the key box
+appears only when Opus is selected.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 ENV_VAR = "ANTHROPIC_API_KEY"
 SECRETS_PATH = ".streamlit/secrets.toml"
@@ -36,17 +39,17 @@ class Model:
 
 # Ordered -- the first entry is the default selection.
 #
-# Sonnet 4.6 leads because it is measurably the most accurate of the two
-# shared-key models: on the ChartX validation split (299 paired figures) it
-# reaches 92.2% mean recall against Haiku's 88.5%, a +3.7 point gap whose
-# 95% bootstrap CI is [+2.7, +4.8] and which holds across all six chart
-# types.  See validation/results/final_val/.
+# Sonnet leads.  The ChartX validation split (299 paired figures) was run on
+# the previous Sonnet, 4.6, which reached 92.2% mean recall against Haiku
+# 4.5's 88.5% -- a +3.7 point gap, 95% bootstrap CI [+2.7, +4.8], holding
+# across all six chart types (validation/results/final_val/).  Sonnet 5.5
+# replaces it at a lower per-token price and has not been benchmarked yet.
 MODELS: tuple[Model, ...] = (
     Model(
-        short_name="Sonnet 4.6",
-        model_id="claude-sonnet-4-6",
+        short_name="Sonnet 5.5",
+        model_id="claude-sonnet-5-5",
         needs_own_key=False,
-        blurb="Most accurate shared-key model -- 92.2% mean recall on ChartX.",
+        blurb="Latest Sonnet. Its predecessor reached 92.2% mean recall on ChartX.",
     ),
     Model(
         short_name="Haiku 4.5",
@@ -55,10 +58,10 @@ MODELS: tuple[Model, ...] = (
         blurb="Faster and cheaper -- 88.5% mean recall on ChartX.",
     ),
     Model(
-        short_name="Opus 5",
-        model_id="claude-opus-5",
+        short_name="Opus 5.5",
+        model_id="claude-opus-5-5",
         needs_own_key=True,
-        blurb="Anthropic's most capable model. Requires your own API key.",
+        blurb="Anthropic's most capable Opus. Runs on your own API key.",
     ),
 )
 
@@ -68,7 +71,7 @@ DEFAULT_MODEL: Model = MODELS[0]
 
 
 def shared_key_from_environment() -> str:
-    """Read the fallback API key from the environment.
+    """Read the app's API key from the environment.
 
     Streamlit secrets are handled by the caller (importing ``st`` here would
     defeat the point of this module); this covers the equally common case of
@@ -80,13 +83,13 @@ def shared_key_from_environment() -> str:
 def resolve_api_key(model: Model, user_key: str, shared_key: str) -> str:
     """Return the key to call the API with, or "" when none is available.
 
-    A key typed into the sidebar always wins.  The shared key is only offered
-    to models that do not require the user to bring their own.
+    The owner's key pays for every model except those that need the
+    visitor's own key; those get only the key the visitor typed, never the
+    owner's.
     """
-    user_key = (user_key or "").strip()
     if model.needs_own_key:
-        return user_key
-    return user_key or (shared_key or "").strip()
+        return (user_key or "").strip()
+    return (shared_key or "").strip()
 
 
 def missing_key_message(model: Model) -> str:
@@ -101,14 +104,47 @@ def missing_key_message(model: Model) -> str:
             m.short_name for m in MODELS if not m.needs_own_key
         )
         return (
-            f"{model.short_name} requires your own Anthropic API key. "
-            f"Paste one above, or switch to {alternatives}."
+            f"{model.short_name} runs on your own Anthropic API key. Paste one "
+            f"above, or switch to {alternatives}."
         )
+    # Visitors cannot supply a key for these models, so this is addressed to
+    # whoever deploys the app.
     return (
-        "No Anthropic API key found, so extraction is disabled. Paste a key "
-        f"above, or set {ENV_VAR} in your environment, or add it to "
-        f"{SECRETS_PATH}."
+        "No Anthropic API key is configured, so extraction is disabled. Set "
+        f"{ENV_VAR} in the environment, in {SECRETS_PATH}, or in the app's "
+        "Secrets settings on Streamlit Community Cloud."
     )
+
+
+class ExtractionError(Exception):
+    """The API call succeeded but returned no usable answer."""
+
+
+def reply_text(response: Any) -> str:
+    """Return the text of a Messages API response.
+
+    Sonnet 5.5 and Opus 5.5 think by default, so the first content block can
+    be a ``thinking`` block with empty text -- reading ``content[0]`` by
+    position then hands an empty string to the JSON parser.  Blocks are read
+    by type instead, and the stop reasons that leave no usable text are
+    reported as such rather than as a JSON syntax error.
+    """
+    if response.stop_reason == "refusal":
+        details = getattr(response, "stop_details", None)
+        category = getattr(details, "category", None)
+        raise ExtractionError(
+            "Claude declined to process this figure"
+            + (f" (category: {category})." if category else ".")
+        )
+    text = "".join(b.text for b in response.content if b.type == "text")
+    if response.stop_reason == "max_tokens":
+        raise ExtractionError(
+            "Claude's answer hit the output-token limit before it finished, "
+            "so the table would be incomplete."
+        )
+    if not text.strip():
+        raise ExtractionError("Claude returned no text for this figure.")
+    return text
 
 
 def extract_blocked_reason(
@@ -124,7 +160,7 @@ def extract_blocked_reason(
     says what is missing.
     """
     if not api_key:
-        return "Add an Anthropic API key in the sidebar first."
+        return "No Anthropic API key available -- see the sidebar."
     if n_loaded == 0:
         return "Upload a figure or enter a PubMed ID first."
     if selected_only and n_selected == 0:

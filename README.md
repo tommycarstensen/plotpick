@@ -56,9 +56,7 @@ flowchart TD
    ANTHROPIC_API_KEY = "sk-ant-..."
    ```
 
-   You can also paste a key straight into the sidebar at runtime, which
-   overrides both. Get a key from the
-   [Anthropic Console](https://console.anthropic.com/).
+   On Streamlit Community Cloud, put the same line in the app's Settings -> Secrets. This key pays for Sonnet and Haiku, and visitors using those are never asked for a key. Get a key from the [Anthropic Console](https://console.anthropic.com/).
 
 3. Run the app:
 
@@ -68,19 +66,15 @@ flowchart TD
 
 ## Models
 
-Pick the model in the sidebar. The first two run on whichever key the app is
-configured with; Opus 5 only ever uses a key you paste in yourself.
+Pick the model in the sidebar. Sonnet and Haiku run on the key the app is configured with; Opus 5.5 runs only on a key the visitor pastes in, which appears as a key box when Opus is selected.
 
 | Model | Model ID | Key | ChartX mean recall |
 |-------|----------|-----|--------------------|
-| Sonnet 4.6 (default) | `claude-sonnet-4-6` | app key or your own | 92.2% |
-| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key or your own | 88.5% |
-| Opus 5 | `claude-opus-5` | your own key only | not benchmarked |
+| Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not yet benchmarked |
+| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.5% |
+| Opus 5.5 | `claude-opus-5-5` | your own key only | not benchmarked |
 
-Recall is the mean over 299 paired figures from the ChartX validation split.
-Sonnet 4.6 is the default because it beats Haiku 4.5 by 3.7 points
-(95% CI [2.7, 4.8]), a gap that holds across all six chart types; Haiku 4.5
-is the cheaper and faster option where that gap is acceptable.
+Recall is the mean over 299 paired figures from the ChartX validation split. That benchmark was run on the previous Sonnet, 4.6, which reached 92.2% and beat Haiku 4.5 by 3.7 points (95% CI [2.7, 4.8]), a gap that held across all six chart types. Sonnet 5.5 replaces it as the default at a lower per-token price; Haiku 4.5 is the cheaper and faster option.
 
 ## Troubleshooting
 
@@ -88,8 +82,7 @@ is the cheaper and faster option where that gap is acceptable.
 Almost always a missing API key -- the buttons stay disabled until one is
 available, and the sidebar says which of these is missing. Check, in order:
 
-1. An API key is set (see step 2 above). Selecting Opus 5 ignores the app's
-   key by design, so it needs a key pasted into the sidebar.
+1. An API key is configured (see step 2 above). On the hosted demo that means the app's Secrets settings on Streamlit Community Cloud. Selecting Opus 5.5 ignores the app's key by design, so it needs a key pasted into the sidebar.
 2. At least one figure is loaded -- upload a file or enter a PubMed ID.
 3. For "Extract selected" only, at least one figure is ticked in the gallery.
 
