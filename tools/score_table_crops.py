@@ -33,7 +33,7 @@ DEFAULT_TABLES = REPO.parent / "validation" / "tables"
 BACKENDS = ("pymupdf", "pdfium")
 MIN_CELLS = 5      # table cells that must be on the page for a crop to be scored
 MARGIN = 0.05      # recall difference that counts as one backend doing better
-DASHES = str.maketrans(dict.fromkeys("‐‑‒–—−", "-"))
+DASHES = str.maketrans(dict.fromkeys(map(chr, (*range(0x2010, 0x2015), 0x2212)), "-"))
 
 
 def normalise(text: str) -> str:
@@ -154,9 +154,10 @@ def main() -> None:
         for tag, group in (("pdfium better", better), ("pdfium worse", worse)):
             for p in group:
                 a, b = p["pymupdf"], p["pdfium"]
+                growth = b["area"] / max(a["area"], 1)
                 print(f"  {tag}: {a['pdf']} p{a['page']} {a['label']} "
                       f"recall {a['recall']:.2f} -> {b['recall']:.2f} "
-                      f"({a['cells']} cells), area x{b['area'] / max(a['area'], 1):.2f}")
+                      f"({a['cells']} cells), area x{growth:.2f}")
 
 
 if __name__ == "__main__":
