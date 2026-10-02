@@ -4,6 +4,7 @@ PDFium has no notion of a text block, so this module builds the blocks from
 single characters, following the rules of MuPDF's text device (which the
 detection heuristics in pdf_figures were tuned against):
 
+- characters are taken in the order the page draws them;
 - a character whose baseline is more than PARAGRAPH_DIST font sizes away from
   the previous character's starts a new block;
 - so does the first line of a new text object that is indented against the
@@ -25,7 +26,7 @@ import threading
 from collections.abc import Iterator
 from ctypes import c_double, c_float, c_int, c_void_p, cast
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
@@ -36,6 +37,7 @@ from pdf_figures import Rect
 # MuPDF's text-device thresholds, in font sizes.
 PARAGRAPH_DIST = 1.5   # baseline jump that starts a new block
 BASE_MAX_DIST = 0.8    # baseline jump that still counts as the same line
+SPACE_DIST = 0.15      # gap along the line that is a space between words
 SPACE_MAX_DIST = 0.8   # gap along the line that starts a new line segment
 # ... and in points: how far a new line must be indented to start a block.
 INDENT_DIST = 0.5
@@ -47,6 +49,20 @@ _LOCK = threading.RLock()
 Box = tuple[float, float, float, float]
 Matrix = tuple[float, float, float, float, float, float]
 IDENTITY: Matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+class Glyph(NamedTuple):
+    """One character: where it is and which text object draws it."""
+
+    char: str
+    box: Box                     # loose box, in PDF page space
+    origin: tuple[float, float]  # start of the baseline, in PDF page space
+    owner: int | None            # address of the text object
+    size: float                  # font size in points
+    cos: float                   # writing direction
+    sin: float
+    number: int                  # position in PDFium's own character order
+    spaced: bool                 # PDFium saw whitespace just before it
 
 
 def _address(pointer: Any) -> int | None:
@@ -112,6 +128,7 @@ class Page:
         self._images: list[Rect] | None = None
         self._drawings: list[Rect] = []
         self._text_clips: dict[int | None, Box] = {}
+        self._text_order: dict[int | None, int] = {}
         self._closed = False
 
     def _require_open(self) -> None:
@@ -179,8 +196,10 @@ class Page:
                     own = _transform(matrix, own)
                     inner_clip = own if clip is None else _intersect(clip, own)
                 if kind == pdfium_c.FPDF_PAGEOBJ_TEXT:
+                    address = _address(obj)
+                    self._text_order[address] = len(self._text_order)
                     if inner_clip is not None:
-                        self._text_clips[_address(obj)] = inner_clip
+                        self._text_clips[address] = inner_clip
                 elif depth < MAX_FORM_DEPTH:
                     form = pdfium_c.FS_MATRIX()
                     inner = matrix
@@ -227,21 +246,26 @@ class Page:
             finally:
                 textpage.close()
 
-    def _blocks(self, textpage: pdfium.PdfTextPage) -> list[dict[str, Any]]:
-        """Group the page's characters, in content-stream order, into blocks."""
+    def _characters(self, textpage: pdfium.PdfTextPage) -> list[Glyph]:
+        """The visible characters of the page, in content-stream order.
+
+        PDFium hands characters out in a reading order of its own making: it
+        sorts text objects that share a baseline, which interleaves a sideways
+        table caption with the body lines beside it.  The order in which the
+        page draws its text objects is what MuPDF follows, so the characters
+        are regrouped by text object and those put back in drawing order.
+        Whitespace is not returned as characters: each one records whether
+        PDFium saw any just before it, which _blocks trusts for neighbours
+        that PDFium also had next to each other.
+        """
         rect = pdfium_c.FS_RECTF()
         matrix = pdfium_c.FS_MATRIX()
         ox, oy = c_double(), c_double()
         page_box = (self._left, self._bottom, self._right, self._top)
-        blocks: list[tuple[list[str], list[float]]] = []
-        chars: list[str] = []
-        bbox: list[float] = []
-        prev_origin = (0.0, 0.0)
-        prev_dir = (1.0, 0.0)
-        prev_advance = line_start = 0.0
-        prev_owner: int | None = None
+        runs: dict[int | None, list[Glyph]] = {}
         styles: dict[int | None, tuple[float, float, float]] = {}
-
+        number = 0
+        spaced = False
         for i in range(textpage.count_chars()):
             code = pdfium_c.FPDFText_GetUnicode(textpage, i)
             if code in (0, 0xFFFE, 0xFFFF):
@@ -249,8 +273,9 @@ class Page:
             # PDFium reports a hyphen it removed at a line break as U+0002.
             char = "-" if code == 2 else chr(code)
             if char.isspace():
-                if chars and chars[-1] != " ":
-                    chars.append(" ")
+                spaced = True
+                continue
+            if pdfium_c.FPDFText_IsGenerated(textpage, i) == 1:
                 continue
             if not pdfium_c.FPDFText_GetLooseCharBox(textpage, i, rect):
                 continue
@@ -262,9 +287,6 @@ class Page:
             clip = self._text_clips.get(owner)
             if clip is not None and not _contains(clip, centre):
                 continue
-            pdfium_c.FPDFText_GetCharOrigin(textpage, i, ox, oy)
-            origin = (ox.value, oy.value)
-
             if owner not in styles:
                 # The character matrix gives both the writing direction and
                 # the scale that turns the nominal font size into points.
@@ -276,8 +298,30 @@ class Page:
                         cos, sin = matrix.a / run, matrix.b / run
                     size *= math.hypot(matrix.c, matrix.d)
                 styles[owner] = (size or max(raw[3] - raw[1], 1.0), cos, sin)
-            size, cos, sin = styles[owner]
+            pdfium_c.FPDFText_GetCharOrigin(textpage, i, ox, oy)
+            runs.setdefault(owner, []).append(Glyph(
+                char, raw, (ox.value, oy.value), owner, *styles[owner],
+                number, spaced,
+            ))
+            number += 1
+            spaced = False
+        last = len(self._text_order)
+        ordered = sorted(runs, key=lambda owner: self._text_order.get(owner, last))
+        return [glyph for owner in ordered for glyph in runs[owner]]
 
+    def _blocks(self, textpage: pdfium.PdfTextPage) -> list[dict[str, Any]]:
+        """Group the page's characters into blocks, as MuPDF's text device does."""
+        blocks: list[tuple[list[str], list[float]]] = []
+        chars: list[str] = []
+        bbox: list[float] = []
+        prev_origin = (0.0, 0.0)
+        prev_dir = (1.0, 0.0)
+        prev_advance = line_start = 0.0
+        prev_owner: int | None = None
+        prev_number = -2
+
+        for glyph in self._characters(textpage):
+            origin, size, cos, sin = glyph.origin, glyph.size, glyph.cos, glyph.sin
             # Offsets from the previous character, across and along the
             # writing direction, in font sizes (text may run sideways).
             dx, dy = origin[0] - prev_origin[0], origin[1] - prev_origin[1]
@@ -287,35 +331,48 @@ class Page:
             position = cos * origin[0] + sin * origin[1]
             if not chars or turned or across > PARAGRAPH_DIST:
                 new_block = True
+                gap = False
             elif across >= BASE_MAX_DIST:
                 new_block = (
-                    owner != prev_owner and position - line_start > INDENT_DIST
+                    glyph.owner != prev_owner
+                    and position - line_start > INDENT_DIST
                 )
+                gap = True
                 line_start = position
             else:
                 new_block = False
+                if glyph.number == prev_number + 1:
+                    # PDFium judges word gaps better than a fixed threshold
+                    # can: it does not split letter-spaced "F I G U R E".
+                    gap = glyph.spaced
+                else:
+                    gap = along >= SPACE_DIST or abs(along) >= SPACE_MAX_DIST
                 if abs(along) >= SPACE_MAX_DIST:
                     line_start = position
 
-            box = self._rect(raw)
+            box = self._rect(glyph.box)
             if new_block:
-                chars = [char]
+                chars = [glyph.char]
                 bbox = [box.x0, box.y0, box.x1, box.y1]
                 blocks.append((chars, bbox))
                 line_start = position
             else:
-                chars.append(char)
+                if gap:
+                    chars.append(" ")
+                chars.append(glyph.char)
                 bbox[0] = min(bbox[0], box.x0)
                 bbox[1] = min(bbox[1], box.y0)
                 bbox[2] = max(bbox[2], box.x1)
                 bbox[3] = max(bbox[3], box.y1)
-            prev_origin, prev_dir, prev_owner = origin, (cos, sin), owner
+            prev_origin, prev_dir, prev_owner = origin, (cos, sin), glyph.owner
+            prev_number = glyph.number
+            raw = glyph.box
             prev_advance = (
                 abs(cos) * (raw[2] - raw[0]) + abs(sin) * (raw[3] - raw[1])
             )
 
         return [
-            {"text": "".join(chars).strip(), "bbox": Rect(*bbox)}
+            {"text": "".join(chars), "bbox": Rect(*bbox)}
             for chars, bbox in blocks
         ]
 

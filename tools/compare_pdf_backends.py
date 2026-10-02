@@ -501,7 +501,17 @@ def main() -> None:
     parser.add_argument("--force", action="store_true",
                         help="recompute PDFs that are already cached")
     parser.add_argument("--no-review", action="store_true")
+    parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                        help="override a threshold of the pdfium backend, "
+                             "e.g. INDENT_DIST=inf, to see what it is worth")
     args = parser.parse_args()
+    for override in args.set:
+        name, value = override.split("=", 1)
+        import pdf_backend_pdfium
+        if not hasattr(pdf_backend_pdfium, name):
+            parser.error(f"pdf_backend_pdfium has no constant {name}")
+        setattr(pdf_backend_pdfium, name, float(value))
+        print(f"override: {name} = {float(value)}")
 
     pdfs: list[Path] = []
     for path in args.paths:
