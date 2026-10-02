@@ -48,6 +48,10 @@ INDENT_DIST = 0.5
 ASCENT_MAX = 1.5
 DESCENT_MAX = 0.6
 
+# Stroked paths longer than this (points) get their box from their own points
+# rather than from PDFium; shorter ones cannot be far out.
+STROKE_CHECK = 20.0
+
 MAX_FORM_DEPTH = 15
 
 _LOCK = threading.RLock()
@@ -123,6 +127,33 @@ def _line_box(
         low, high = (x - up, x + down) if sin > 0 else (x - down, x + up)
         left, right = max(left, low), min(right, high)
     return left, bottom, right, top
+
+
+def _path_box(obj: Any) -> Box | None:
+    """Bounding box of a path's own points, in its container's space.
+
+    PDFium's bounds of a stroked path allow for mitre joins at every corner.
+    For the jagged line of a time series that reaches a thousand points and
+    more beyond the line itself, far off the page.
+    """
+    transform = pdfium_c.FS_MATRIX()
+    if not pdfium_c.FPDFPageObj_GetMatrix(obj, transform):
+        return None
+    x, y = c_float(), c_float()
+    xs: list[float] = []
+    ys: list[float] = []
+    for i in range(max(pdfium_c.FPDFPath_CountSegments(obj), 0)):
+        segment = pdfium_c.FPDFPath_GetPathSegment(obj, i)
+        if pdfium_c.FPDFPathSegment_GetPoint(segment, x, y):
+            xs.append(x.value)
+            ys.append(y.value)
+    if not xs:
+        return None
+    return _transform(
+        (transform.a, transform.b, transform.c, transform.d, transform.e,
+         transform.f),
+        (min(xs), min(ys), max(xs), max(ys)),
+    )
 
 
 def _clip_box(obj: Any) -> Box | None:
@@ -246,9 +277,13 @@ class Page:
                 target = self._images
             else:
                 continue
-            if pdfium_c.FPDFPageObj_GetBounds(obj, left, bottom, right, top):
-                box = (left.value, bottom.value, right.value, top.value)
-                target.append(self._rect(_transform(matrix, box)))
+            if not pdfium_c.FPDFPageObj_GetBounds(obj, left, bottom, right, top):
+                continue
+            box = (left.value, bottom.value, right.value, top.value)
+            if (kind == pdfium_c.FPDF_PAGEOBJ_PATH and stroke.value
+                    and max(box[2] - box[0], box[3] - box[1]) > STROKE_CHECK):
+                box = _path_box(obj) or box
+            target.append(self._rect(_transform(matrix, box)))
 
     def image_rects(self) -> list[Rect]:
         with _LOCK:
