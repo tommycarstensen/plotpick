@@ -17,7 +17,6 @@ import base64
 import io
 import json
 import re
-import tarfile
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
@@ -46,6 +45,7 @@ from models import (
     shared_key_from_environment,
 )
 from pdf_figures import find_figures_on_page as _find_figures_on_page
+from pmc import download_pmc_pdf
 
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -327,42 +327,12 @@ def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
 
 def _download_pmc_pdf(pmcid: str) -> bytes | None:
     """Download a PDF from PMC Open Access. Returns bytes or None."""
-    oa_url = (
-        f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi"
-        f"?id={pmcid}&format=pdf"
-    )
     try:
-        r = requests.get(oa_url, timeout=15)
-        if not r.ok:
-            return None
-        root = ET.fromstring(r.content)
-        link = root.find(".//link[@format='pdf']")
-        if link is None:
-            link = root.find(".//link[@format='tgz']")
-        if link is None:
-            return None
-        href = link.get("href", "")
-        if not href:
-            return None
-        href = href.replace(
-            "ftp://ftp.ncbi.nlm.nih.gov/",
-            "https://ftp.ncbi.nlm.nih.gov/",
-        )
-        dl = requests.get(href, timeout=120, allow_redirects=True)
-        if not dl.ok:
-            return None
-        if href.endswith(".tar.gz"):
-            with tarfile.open(fileobj=io.BytesIO(dl.content), mode="r:gz") as tar:
-                for member in tar.getmembers():
-                    if member.name.endswith(".pdf"):
-                        f = tar.extractfile(member)
-                        if f:
-                            return f.read()
-            return None
-        return dl.content
-    except (requests.RequestException, tarfile.TarError) as exc:
+        return download_pmc_pdf(pmcid)
+    except (requests.RequestException, ET.ParseError) as exc:
         # As above: narrow to the failures this function can actually cause.
-        # A blanket handler turned every bug into "PDF not available".
+        # A blanket handler turned every bug into "PDF not available", which
+        # is also how the retired oa.fcgi endpoint went unnoticed.
         st.warning(f"Download failed for {pmcid} ({exc}).")
         return None
 
