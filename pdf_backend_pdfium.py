@@ -42,9 +42,11 @@ SPACE_MAX_DIST = 0.8   # gap along the line that starts a new line segment
 # ... and in points: how far a new line must be indented to start a block.
 INDENT_DIST = 0.5
 # The most a character's box may reach above and below its baseline, in font
-# sizes (MuPDF's values for Helvetica).
-ASCENT_MAX = 1.1
-DESCENT_MAX = 0.3
+# sizes.  Loose enough to leave ordinary fonts alone: on the PMC validation
+# papers a cap at MuPDF's Helvetica metrics (1.1 and 0.3) moved more crops
+# away from PyMuPDF's than it moved towards them.
+ASCENT_MAX = 1.5
+DESCENT_MAX = 0.6
 
 MAX_FORM_DEPTH = 15
 
@@ -108,8 +110,8 @@ def _line_box(
     """A character's loose box, held to a normal line height.
 
     The loose box spans the font's declared ascent and descent, which for
-    mathematical fonts can be three times the font size and would stretch
-    every block that holds a formula.
+    some mathematical fonts is over three times the font size and would
+    stretch every block that holds a formula.
     """
     up, down = ASCENT_MAX * size, DESCENT_MAX * size
     left, bottom, right, top = box
