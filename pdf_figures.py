@@ -2,12 +2,21 @@
 
 Standalone module with no Streamlit dependency -- usable from both the app
 and from batch scripts.
+
+The detection works on plain page facts (text blocks, image boxes, drawing
+boxes), which a backend module reads from the PDF.  TEMPORARY, while the
+move off PyMuPDF is being evaluated: two backends exist side by side and
+PLOTPICK_PDF_BACKEND picks one ("pymupdf", the default, or "pdfium").
 """
 
+import os
 import re
-from typing import Any
+from collections.abc import Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
 
-import pymupdf
+from PIL import Image
 
 CAPTION_RE = re.compile(
     r"^(Supplementary\s+)?Fig(ure|\.)\s*\d"
@@ -18,6 +27,67 @@ CAPTION_RE = re.compile(
 MIN_IMG_DIM = 50
 H_MARGIN = 20
 V_MARGIN = 6
+
+BACKEND_ENV = "PLOTPICK_PDF_BACKEND"
+DEFAULT_BACKEND = "pymupdf"
+
+
+@dataclass
+class Rect:
+    """A box in page points, origin top-left, as the page is displayed."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    def __iter__(self) -> Iterator[float]:
+        return iter((self.x0, self.y0, self.x1, self.y1))
+
+
+class PdfPage(Protocol):
+    """What a backend exposes for one page."""
+
+    width: float
+    height: float
+
+    def text_blocks(self) -> list[dict[str, Any]]:
+        """Paragraph-level blocks, each {"text": str, "bbox": Rect}."""
+        ...
+
+    def image_rects(self) -> list[Rect]: ...
+
+    def drawing_rects(self) -> list[Rect]: ...
+
+    def render(self, clip: Rect | None, dpi: int) -> Image.Image:
+        """Rasterise the page, or the clip region of it, as an RGB image."""
+        ...
+
+
+class PdfDocument(Protocol):
+    """What a backend exposes for one open PDF."""
+
+    def __len__(self) -> int: ...
+
+    def __iter__(self) -> Iterator[PdfPage]: ...
+
+    def __enter__(self) -> "PdfDocument": ...
+
+    def __exit__(self, *exc: object) -> None: ...
+
+    def close(self) -> None: ...
+
+
+def open_pdf(source: bytes | str | Path, backend: str | None = None) -> PdfDocument:
+    """Open a PDF, given as bytes or a path, with the selected backend."""
+    name = backend or os.environ.get(BACKEND_ENV) or DEFAULT_BACKEND
+    if name == "pymupdf":
+        from pdf_backend_pymupdf import Document as PymupdfDocument
+        return PymupdfDocument(source)
+    if name == "pdfium":
+        from pdf_backend_pdfium import Document as PdfiumDocument
+        return PdfiumDocument(source)
+    raise ValueError(f"Unknown PDF backend {name!r}: use 'pymupdf' or 'pdfium'")
 
 
 def label_from_caption(text: str) -> str | None:
@@ -62,28 +132,36 @@ def _column_bounds(
 
 def _padded_rect(
     x0: float, y0: float, x1: float, y1: float, pw: float, ph: float,
-) -> pymupdf.Rect:
-    return pymupdf.Rect(
+) -> Rect:
+    return Rect(
         max(0, x0 - H_MARGIN), max(0, y0 - V_MARGIN),
         min(pw, x1 + H_MARGIN), min(ph, y1 + V_MARGIN),
     )
 
 
 def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
+    """Detect figures/tables on a raw PyMuPDF page (the pre-backend entry point).
+
+    Kept for callers that open the PDF with PyMuPDF themselves and pass the
+    crop_rect to page.get_pixmap(clip=).  That needs a real pymupdf.Rect:
+    given any other rectangle type, PyMuPDF silently renders the whole page.
+    """
+    import pymupdf
+
+    from pdf_backend_pymupdf import Page as PymupdfPage
+    elements = find_figures(PymupdfPage(page))
+    for element in elements:
+        element["crop_rect"] = pymupdf.Rect(*element["crop_rect"])
+    return elements
+
+
+def find_figures(page: PdfPage) -> list[dict[str, Any]]:
     """Detect figures/tables on a PDF page via caption text.
 
     Returns list of dicts with keys: label, caption, crop_rect.
     """
-    pw, ph = page.rect.width, page.rect.height
-
-    text_blocks: list[dict] = []
-    for block in page.get_text("dict")["blocks"]:
-        if "lines" not in block:
-            continue
-        full = ""
-        for line in block["lines"]:
-            full += "".join(span["text"] for span in line["spans"])
-        text_blocks.append({"text": full.strip(), "bbox": pymupdf.Rect(block["bbox"])})
+    pw, ph = page.width, page.height
+    text_blocks = page.text_blocks()
 
     captions: list[dict] = []
     for tb in text_blocks:
@@ -104,12 +182,10 @@ def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
         return []
 
     img_rects = [
-        pymupdf.Rect(info["bbox"])
-        for info in page.get_image_info(xrefs=True)
-        if (info["bbox"][2] - info["bbox"][0] > MIN_IMG_DIM
-            and info["bbox"][3] - info["bbox"][1] > MIN_IMG_DIM)
+        r for r in page.image_rects()
+        if r.x1 - r.x0 > MIN_IMG_DIM and r.y1 - r.y0 > MIN_IMG_DIM
     ]
-    drawings = page.get_drawings()
+    drawings = page.drawing_rects()
     two_col = _is_two_column(text_blocks, pw)
 
     def same_column(a: dict, b: dict) -> bool:
@@ -149,16 +225,16 @@ def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
             else:
                 nearby = [
                     d for d in drawings
-                    if (d["rect"].y0 >= prev_y - 10
-                        and d["rect"].y1 <= cap_y1 + 10
-                        and d["rect"].x0 >= cap_x0 - 60
-                        and d["rect"].x1 <= cap_x1 + 60)
+                    if (d.y0 >= prev_y - 10
+                        and d.y1 <= cap_y1 + 10
+                        and d.x0 >= cap_x0 - 60
+                        and d.x1 <= cap_x1 + 60)
                 ]
                 if nearby:
-                    x0 = min(d["rect"].x0 for d in nearby)
-                    y0 = min(d["rect"].y0 for d in nearby)
-                    x1 = max(d["rect"].x1 for d in nearby)
-                    y1 = max(d["rect"].y1 for d in nearby)
+                    x0 = min(d.x0 for d in nearby)
+                    y0 = min(d.y0 for d in nearby)
+                    x1 = max(d.x1 for d in nearby)
+                    y1 = max(d.y1 for d in nearby)
                 else:
                     x0, y0 = cap_x0, prev_y
                     x1, y1 = cap_x1, cap_y0

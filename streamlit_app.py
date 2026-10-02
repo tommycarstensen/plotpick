@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Any
 
 import anthropic
 import pandas as pd
-import pymupdf
 import requests
 import streamlit as st
 import streamlit.components.v1
@@ -44,7 +43,7 @@ from models import (
     resolve_api_key,
     shared_key_from_environment,
 )
-from pdf_figures import find_figures_on_page as _find_figures_on_page
+from pdf_figures import find_figures, open_pdf
 from pmc import download_pmc_pdf
 
 if TYPE_CHECKING:
@@ -158,9 +157,8 @@ def _resize_for_api(img: Image.Image) -> Image.Image:
     return img
 
 
-def _pix_to_png_bytes(pix: pymupdf.Pixmap) -> bytes:
-    """Convert a PyMuPDF Pixmap to compressed PNG bytes."""
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+def _render_to_png_bytes(img: Image.Image) -> bytes:
+    """Convert a rendered page region to compressed PNG bytes."""
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -173,24 +171,24 @@ def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, bytes]]:
     Falls back to full-page rendering when no captions are found.
     """
     results: list[tuple[str, bytes]] = []
-    doc = pymupdf.open(stream=data, filetype="pdf")
-    mat = pymupdf.Matrix(300 / 72, 300 / 72)  # 300 DPI for better readability
+    dpi = 300  # for better readability
 
-    for page_idx in range(len(doc)):
-        page = doc[page_idx]
-        elements = _find_figures_on_page(page)
+    with open_pdf(data) as doc:
+        for page_idx, page in enumerate(doc):
+            elements = find_figures(page)
 
-        if elements:
-            for elem in elements:
-                pix = page.get_pixmap(matrix=mat, clip=elem["crop_rect"])
-                label = f"{name} p.{page_idx + 1} {elem['label']}"
-                results.append((label, _pix_to_png_bytes(pix)))
-        else:
-            # No figures detected -- render full page as fallback
-            pix = page.get_pixmap(matrix=mat)
-            results.append((f"{name} p.{page_idx + 1}", _pix_to_png_bytes(pix)))
+            if elements:
+                for elem in elements:
+                    img = page.render(elem["crop_rect"], dpi)
+                    label = f"{name} p.{page_idx + 1} {elem['label']}"
+                    results.append((label, _render_to_png_bytes(img)))
+            else:
+                # No figures detected -- render full page as fallback
+                img = page.render(None, dpi)
+                results.append(
+                    (f"{name} p.{page_idx + 1}", _render_to_png_bytes(img))
+                )
 
-    doc.close()
     return results
 
 
