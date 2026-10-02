@@ -41,6 +41,10 @@ SPACE_DIST = 0.15      # gap along the line that is a space between words
 SPACE_MAX_DIST = 0.8   # gap along the line that starts a new line segment
 # ... and in points: how far a new line must be indented to start a block.
 INDENT_DIST = 0.5
+# The most a character's box may reach above and below its baseline, in font
+# sizes (MuPDF's values for Helvetica).
+ASCENT_MAX = 1.1
+DESCENT_MAX = 0.3
 
 MAX_FORM_DEPTH = 15
 
@@ -96,6 +100,27 @@ def _transform(matrix: Matrix, box: Box) -> Box:
     xs = [a * x + c * y + e for x in (box[0], box[2]) for y in (box[1], box[3])]
     ys = [b * x + d * y + f for x in (box[0], box[2]) for y in (box[1], box[3])]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _line_box(
+    box: Box, origin: tuple[float, float], size: float, cos: float, sin: float,
+) -> Box:
+    """A character's loose box, held to a normal line height.
+
+    The loose box spans the font's declared ascent and descent, which for
+    mathematical fonts can be three times the font size and would stretch
+    every block that holds a formula.
+    """
+    up, down = ASCENT_MAX * size, DESCENT_MAX * size
+    left, bottom, right, top = box
+    x, y = origin
+    if abs(cos) > 0.99:
+        low, high = (y - down, y + up) if cos > 0 else (y - up, y + down)
+        bottom, top = max(bottom, low), min(top, high)
+    elif abs(sin) > 0.99:
+        low, high = (x - up, x + down) if sin > 0 else (x - down, x + up)
+        left, right = max(left, low), min(right, high)
+    return left, bottom, right, top
 
 
 def _clip_box(obj: Any) -> Box | None:
@@ -266,10 +291,21 @@ class Page:
         styles: dict[int | None, tuple[float, float, float]] = {}
         number = 0
         spaced = False
+        lead = 0
         for i in range(textpage.count_chars()):
             code = pdfium_c.FPDFText_GetUnicode(textpage, i)
             if code in (0, 0xFFFE, 0xFFFF):
                 continue
+            # PDFium counts in UTF-16 units: a character beyond the basic
+            # plane (most mathematical letters) arrives as two surrogates.
+            if 0xD800 <= code <= 0xDBFF:
+                lead = code
+                continue
+            if 0xDC00 <= code <= 0xDFFF:
+                if not lead:
+                    continue
+                code = 0x10000 + ((lead - 0xD800) << 10) + (code - 0xDC00)
+            lead = 0
             # PDFium reports a hyphen it removed at a line break as U+0002.
             char = "-" if code == 2 else chr(code)
             if char.isspace():
@@ -287,6 +323,8 @@ class Page:
             clip = self._text_clips.get(owner)
             if clip is not None and not _contains(clip, centre):
                 continue
+            pdfium_c.FPDFText_GetCharOrigin(textpage, i, ox, oy)
+            origin = (ox.value, oy.value)
             if owner not in styles:
                 # The character matrix gives both the writing direction and
                 # the scale that turns the nominal font size into points.
@@ -298,10 +336,9 @@ class Page:
                         cos, sin = matrix.a / run, matrix.b / run
                     size *= math.hypot(matrix.c, matrix.d)
                 styles[owner] = (size or max(raw[3] - raw[1], 1.0), cos, sin)
-            pdfium_c.FPDFText_GetCharOrigin(textpage, i, ox, oy)
             runs.setdefault(owner, []).append(Glyph(
-                char, raw, (ox.value, oy.value), owner, *styles[owner],
-                number, spaced,
+                char, _line_box(raw, origin, *styles[owner]), origin, owner,
+                *styles[owner], number, spaced,
             ))
             number += 1
             spaced = False
