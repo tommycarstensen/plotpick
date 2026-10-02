@@ -29,9 +29,16 @@ class PageSpec:
 
 
 def text(x: float, y: float, lines: list[str], size: float = 10,
-         leading: float = 12) -> str:
-    """One text object; y is the baseline of the first line."""
-    ops = [f"BT /F1 {size} Tf {leading} TL 1 0 0 1 {x} {y} Tm"]
+         leading: float = 12, *, sideways: bool = False, spacing: float = 0,
+         font: str = "F1") -> str:
+    """One text object; y is the baseline of the first line.
+
+    sideways turns the text a quarter, to read bottom-up; spacing is extra
+    space after every character, in points; font F2 is a copy of the
+    Helvetica F1 whose letter A reads as U+1D746, outside the basic plane.
+    """
+    turn = "0 1 -1 0" if sideways else "1 0 0 1"
+    ops = [f"BT /{font} {size} Tf {leading} TL {spacing} Tc {turn} {x} {y} Tm"]
     for i, line in enumerate(lines):
         if i:
             ops.append("T*")
@@ -66,12 +73,23 @@ def build_pdf(pages: list[PageSpec]) -> bytes:
     catalog = add(b"")
     tree = add(b"")
     font = add(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    mapping = add(_stream("", (
+        b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap "
+        b"/CMapName /Test def /CMapType 2 def "
+        b"1 begincodespacerange <00> <FF> endcodespacerange "
+        b"1 beginbfchar <41> <D835DF46> endbfchar "
+        b"endcmap CMapName currentdict /CMap defineresource pop end end"
+    )))
+    mapped = add(
+        f"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+        f"/ToUnicode {mapping} 0 R >>".encode()
+    )
     pixels = bytes([200, 30, 30, 30, 200, 30, 30, 30, 200, 220, 220, 40])
     picture = add(_stream(
         "/Type /XObject /Subtype /Image /Width 2 /Height 2 "
         "/ColorSpace /DeviceRGB /BitsPerComponent 8", pixels,
     ))
-    resources = f"/Font << /F1 {font} 0 R >>"
+    resources = f"/Font << /F1 {font} 0 R /F2 {mapped} 0 R >>"
 
     kids: list[int] = []
     for spec in pages:

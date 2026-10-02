@@ -140,6 +140,59 @@ class TestTextBlocks:
         assert detect(spec, backend) == {}
 
 
+class TestTextOrder:
+    def test_sideways_caption_between_body_lines_is_read_whole(self, backend):
+        """A landscape table on a portrait page: its caption runs bottom-up
+        in two pieces, and the first starts level with a body line drawn just
+        before it.  PDFium's own reading order sorts that piece into the body
+        line ("TABLE", the body line, then "2 | Sleep ...")."""
+        spec = PageSpec(
+            text(300, 100, ["low symptom severity, although differences"])
+            + " " + text(60, 100, ["TABLE"], size=8, sideways=True)
+            + " " + text(60, 131, ["2 | Sleep onset and wake-up time"], size=8,
+                         sideways=True)
+        )
+        assert blocks(spec, backend) == [
+            "low symptom severity, although differences",
+            "TABLE 2 | Sleep onset and wake-up time",
+        ]
+        assert "Table_2" in detect(spec, backend)
+
+    def test_characters_beyond_the_basic_plane_arrive_whole(self, backend):
+        """PDFium counts in UTF-16 units and hands such a character out as
+        two surrogates, which cannot be encoded."""
+        (block,) = blocks(PageSpec(text(72, 720, ["A = 1"], font="F2")), backend)
+        assert block.replace(" ", "") == "\U0001d746=1"
+        block.encode("utf-8")
+
+
+class TestPdfiumOnly:
+    """Cases the PyMuPDF path gets wrong, so they are not shared."""
+
+    @pytest.fixture(autouse=True)
+    def _needs_pdfium(self):
+        pytest.importorskip("pypdfium2")
+
+    def test_letter_spaced_caption_is_still_a_caption(self):
+        """Journals set FIGURE in spaced capitals; a fixed gap threshold
+        reads that as "F I G U R E 1"."""
+        spec = PageSpec(
+            image(100, 500, 200, 150)
+            + " " + text(100, 480, ["FIGURE 1"], spacing=2)
+            + " " + text(190, 480, ["Distribution of cases by age."])
+        )
+        assert "Fig_1" in detect(spec, "pdfium")
+
+    def test_spiky_stroke_does_not_reach_beyond_its_points(self):
+        """PDFium's own bounds add the mitre of every corner: here some
+        250 pt past the tip of the spike at x = 300."""
+        spec = PageSpec("5 w 100 M 100 300 m 300 301 l 100 302 l S")
+        with only_page(spec, "pdfium") as page:
+            (rect,) = page.drawing_rects()
+        assert rect.x1 == pytest.approx(300, abs=1)
+        assert rect.x0 == pytest.approx(100, abs=1)
+
+
 class TestRendering:
     def test_clip_is_rendered_at_the_requested_resolution(self, backend):
         with only_page(UPRIGHT, backend) as page:
