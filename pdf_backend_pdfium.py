@@ -112,6 +112,14 @@ class Page:
         self._images: list[Rect] | None = None
         self._drawings: list[Rect] = []
         self._text_clips: dict[int | None, Box] = {}
+        self._closed = False
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError(
+                "PDF page used after it was closed: a page is valid only "
+                "until the document yields the next one"
+            )
 
     # -- coordinates -------------------------------------------------------
 
@@ -136,6 +144,7 @@ class Page:
         """Walk the page objects once: image boxes, drawing boxes, text clips."""
         if self._images is not None:
             return
+        self._require_open()
         self._images = []
         self._walk(self._page, False, IDENTITY, None, 0)
 
@@ -210,6 +219,7 @@ class Page:
 
     def text_blocks(self) -> list[dict[str, Any]]:
         with _LOCK:
+            self._require_open()
             self._scan()
             textpage = self._page.get_textpage()
             try:
@@ -322,6 +332,7 @@ class Page:
             crop = (x0, self.height - y1, self.width - x1, y0)
         scale = dpi / 72
         with _LOCK:
+            self._require_open()
             # pypdfium2 is untyped, so pyright infers int from the default of 1.
             bitmap = self._page.render(
                 scale=scale,  # pyright: ignore[reportArgumentType] -- float is valid
@@ -334,7 +345,9 @@ class Page:
 
     def close(self) -> None:
         with _LOCK:
-            self._page.close()
+            if not self._closed:
+                self._closed = True
+                self._page.close()
 
 
 class Document:
@@ -347,6 +360,7 @@ class Document:
             return len(self._doc)
 
     def __iter__(self) -> Iterator[Page]:
+        """Yield the pages in order, closing each when the next is requested."""
         for index in range(len(self)):
             with _LOCK:
                 page = Page(self._doc[index])

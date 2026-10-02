@@ -69,7 +69,13 @@ class PdfDocument(Protocol):
 
     def __len__(self) -> int: ...
 
-    def __iter__(self) -> Iterator[PdfPage]: ...
+    def __iter__(self) -> Iterator[PdfPage]:
+        """Yield the pages in order.
+
+        A page is only good until the next one is requested: use it inside
+        the loop, do not collect pages in a list.
+        """
+        ...
 
     def __enter__(self) -> "PdfDocument": ...
 
