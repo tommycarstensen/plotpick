@@ -87,6 +87,22 @@ class TestDetection:
         """ "Figure 2 shows ..." starts a line, but not a block."""
         assert set(detect(UPRIGHT)) == {"Fig_1", "Table_1"}
 
+    def test_a_paragraph_that_opens_with_a_label_is_not_a_caption(self):
+        """An indented first line starts a block of its own, so the block
+        starts with the label, as a caption does."""
+        spec = PageSpec(
+            f"{UPRIGHT.content} "
+            + text(72, 300, ["The paragraph before ends here, on a full line."])
+            + " " + text(84, 288, ["Table 1 summarizes the outcomes by arm, and",
+                                   "the paragraph carries on below."])
+        )
+        with only_page(spec) as page:
+            found = find_figures(page)
+            starts = [b["text"][:18] for b in page.text_blocks()]
+        assert "Table 1 summarizes" in starts
+        assert [e["label"] for e in found] == ["Fig_1", "Table_1"]
+        assert found[1]["caption"].startswith("Table 1. Outcomes")
+
     def test_vector_figure_is_found_from_its_drawings(self):
         spec = PageSpec(
             box(320, 200, 100, 120) + " " + box(340, 220, 40, 60)
