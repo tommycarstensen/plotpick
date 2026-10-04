@@ -58,6 +58,7 @@ class TestRunningText:
         "Figure 2C,D show the temporal changes",
         "Supplementary Figure 10, the therapeutic impact",
         "Table 2). These results highlight",
+        "Figure 4.",
     ])
     def test_sentences(self, text):
         assert reads_as_running_text(text), f"Should be a sentence: {text!r}"
@@ -65,6 +66,7 @@ class TestRunningText:
     @pytest.mark.parametrize("text", [
         "Table 1",
         "Figure 12",
+        "Table 2. Cont.",
         "Table 1. Demographic and clinical characteristics",
         "Table 3: results",
         "FIGURE 1 | Flowchart of data collection.",

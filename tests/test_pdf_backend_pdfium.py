@@ -115,6 +115,134 @@ class TestDetection:
         assert detect(PageSpec(BODY)) == {}
 
 
+PARAGRAPH = [
+    "This paragraph of body text is long enough, and has few enough digits,",
+    "to be told apart from the labels inside a figure and from the rows of a",
+    "table, which is what lets it mark where the figure below it begins,",
+    "however much white space the page leaves around the figure itself.",
+]
+
+
+def columns(top: int = 300) -> str:
+    """Body text set in two columns, so that the page counts as two-column.
+
+    One column after the other, as a page is drawn: text on one baseline in
+    both columns would be read as a single line.
+    """
+    return " ".join(
+        text(x, top - 40 * i, [f"{side} column, paragraph number {i + 1}."])
+        for x, side in ((72, "Left"), (330, "Right")) for i in range(3)
+    )
+
+
+class TestFigureRegions:
+    """Which graphics on the page belong to which caption."""
+
+    def test_each_of_two_stacked_figures_gets_only_its_own_image(self):
+        """The image of the second also lies before the next caption, and
+        used to be taken into the crop of the first."""
+        found = detect(PageSpec(
+            image(100, 560, 200, 150) + " " + text(100, 540, ["Figure 1. First."])
+            + " " + image(100, 330, 200, 150)
+            + " " + text(100, 310, ["Figure 2. Second."])
+        ))
+        # Images: 82-232 and 312-462 from the top; captions end near 255, 485.
+        assert close_to(found["Fig_1"], (80, 76, 304, 261), tolerance=4)
+        assert close_to(found["Fig_2"], (80, 306, 304, 491), tolerance=4)
+
+    def test_caption_first_layout_takes_the_image_under_the_caption(self):
+        """Some journals put the caption above the figure."""
+        found = detect(PageSpec(
+            text(100, 700, ["Figure 1. Caption first."])
+            + " " + image(100, 542, 200, 150)
+            + " " + text(100, 500, ["Figure 2. Caption first again."])
+            + " " + image(100, 342, 200, 150)
+        ))
+        # Images: 100-250 and 300-450 from the top.
+        assert found["Fig_1"].y0 < 92 and 250 <= found["Fig_1"].y1 < 280
+        assert 270 < found["Fig_2"].y0 < 292 and found["Fig_2"].y1 >= 450
+
+    def test_an_image_goes_to_the_nearer_caption(self):
+        """A caption whose figure is on the page before, then the next figure:
+        the image sits right above its own caption, far below the other."""
+        found = detect(PageSpec(
+            text(100, 760, ["Figure 5. The figure itself is on the page before."])
+            + " " + image(100, 480, 200, 150)
+            + " " + text(100, 462, ["Figure 6. The figure above this caption."])
+        ))
+        assert found["Fig_5"].y1 < 60
+        assert close_to(found["Fig_6"], (80, 156, 304, 339), tolerance=4)
+
+    def test_vector_figure_under_a_table_starts_where_the_table_ends(self):
+        found = detect(PageSpec(
+            TABLE + " " + box(100, 352, 100, 0)  # the rule that closes the table
+            + " " + box(100, 150, 180, 120)
+            + " " + text(100, 130, ["Figure 3. A vector figure under a table."])
+        ))
+        # The last row of the table ends 438 pt from the top; the box of the
+        # figure spans 522 to 642.
+        assert 437 <= found["Fig_3"].y0 <= 522
+        assert found["Fig_3"].y1 >= 642
+
+    def test_body_text_above_a_vector_figure_is_not_part_of_it(self):
+        found = detect(PageSpec(
+            box(100, 740, 100, 0)  # a rule further up the page
+            + " " + text(72, 700, PARAGRAPH)
+            + " " + box(100, 400, 180, 120)
+            + " " + text(100, 380, ["Figure 3. A vector figure under a paragraph."])
+        ))
+        # The paragraph ends 135 pt from the top, the box starts at 272.
+        assert 135 <= found["Fig_3"].y0 <= 272
+
+    def test_a_figure_wider_than_its_captions_column_is_not_cut(self):
+        """A short caption under the left edge of a wide figure put the crop
+        in the left column, and half the figure outside it."""
+        found = detect(PageSpec(
+            image(72, 500, 400, 150) + " " + text(72, 480, ["Figure 1. Wide."])
+            + " " + columns()
+        ))
+        assert found["Fig_1"].x0 <= 72 and found["Fig_1"].x1 >= 472
+
+    def test_a_strip_image_is_still_a_figure(self):
+        """A flow diagram set as one flat image, 400 pt wide, 40 pt high."""
+        found = detect(PageSpec(
+            image(100, 650, 400, 40) + " " + text(100, 630, ["Figure 1. Flow."])
+        ))
+        assert found["Fig_1"].y1 - found["Fig_1"].y0 >= 50
+        assert found["Fig_1"].x1 - found["Fig_1"].x0 >= 400
+
+    def test_a_small_image_is_not_a_figure(self):
+        """A publisher logo at the page top is not a figure."""
+        found = detect(PageSpec(
+            image(50, 760, 30, 30)
+            + " " + image(100, 500, 200, 150)
+            + " " + text(100, 480, ["Figure 1. The real figure."])
+        ))
+        # 50-80 x 2-32 is a tiny icon; the real figure is at 100-300 x 92-242.
+        assert found["Fig_1"].x0 >= 80
+
+    def test_a_running_heads_rule_is_not_part_of_a_figure(self):
+        """A rule 30 pt from the top of the page is page furniture."""
+        found = detect(PageSpec(
+            box(40, 760, 532, 0)      # the rule, 10 pt below the page top
+            + " " + box(100, 500, 180, 120)
+            + " " + text(100, 480, ["Figure 1. Vector."])
+        ))
+        assert found["Fig_1"].y0 >= 100
+
+    def test_caption_in_the_column_beside_the_figure(self):
+        """Some journals set a wide figure with its caption next to it."""
+        found = detect(PageSpec(
+            columns(top=700)
+            + " " + image(46, 60, 340, 240)
+            + " " + text(407, 96, ["Figure 1. The caption", "stands beside the",
+                                   "figure, not under it."])
+        ))
+        crop = found["Fig_1"]
+        assert crop.x0 <= 46 and crop.x1 >= 500
+        assert crop.y0 <= 492 + 1 and crop.y1 >= 732 - 1
+
+
 class TestTextBlocks:
     def test_lines_of_one_paragraph_form_one_block(self):
         (block,) = blocks(PageSpec(BODY))
