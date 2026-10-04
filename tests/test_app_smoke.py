@@ -6,10 +6,18 @@ AttributeError that crashed the Results tab whenever the model returned
 `"scale": null`.  Both were only visible by running the app.
 """
 
+import base64
+import io
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import anthropic
 import pytest
+from PIL import Image
+
+import figure_images
 
 APP = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 sys.path.insert(0, str(APP.parent))
@@ -107,3 +115,80 @@ def test_opus_runs_on_a_pasted_key(app, monkeypatch):
     assert not [w for w in at.warning if "API key" in w.value]
     for button in (b for b in at.button if "Extract" in b.label):
         assert "Upload" in button.help
+
+
+def png_file(width: int, height: int) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def upload(at, name: str, content: bytes):
+    """Put a file in the uploader and rerun, as a visitor's upload does."""
+    if not hasattr(at, "file_uploader"):
+        pytest.skip("this Streamlit's AppTest cannot simulate an upload")
+    return at.file_uploader[0].upload(name, content).run()
+
+
+def test_upload_is_rendered_once_not_on_every_rerun(app, monkeypatch):
+    """Rendering every upload again on each click took the app over its memory limit."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    rendered: list[str] = []
+    real = figure_images.file_to_figures
+
+    def counting(name: str, data: bytes):
+        rendered.append(name)
+        return real(name, data)
+
+    monkeypatch.setattr(figure_images, "file_to_figures", counting)
+    at = upload(app().run(), "plot.png", png_file(3000, 1500))
+    assert not at.exception
+    assert any("1 image(s) loaded" in c.value for c in at.caption)
+
+    next(b for b in at.button if b.label == "Select all").click().run()
+    next(c for c in at.checkbox if c.label == "plot.png").uncheck().run()
+    at.selectbox[0].set_value("Haiku 4.5").run()
+    assert not at.exception
+    assert rendered == ["plot.png"]
+
+
+def test_removing_an_upload_removes_its_figures(app, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    at = upload(app().run(), "plot.png", png_file(40, 30))
+    assert any("1 image(s) loaded" in c.value for c in at.caption)
+    at.file_uploader[0].set_value(None).run()
+    assert not at.exception
+    assert not any("image(s) loaded" in c.value for c in at.caption)
+    assert any("Upload files" in i.value for i in at.info)
+
+
+def test_extraction_sends_the_upload_at_the_api_width(app, monkeypatch):
+    """End to end: an upload wider than the API limit is cut down when sent."""
+    sent: list[dict] = []
+    answer = {
+        "figure_type": "bar chart", "y_axis": "mg/L", "scale": "linear",
+        "confidence": 90, "notes": "",
+        "data": [{"group": "A", "mean": 1.5, "uncertain": []}],
+    }
+
+    class FakeAnthropic:
+        def __init__(self, api_key: str):
+            del api_key
+            self.messages = self
+
+        def create(self, **request):
+            sent.append(request)
+            text = SimpleNamespace(type="text", text=json.dumps(answer))
+            return SimpleNamespace(stop_reason="end_turn", content=[text])
+
+    monkeypatch.setattr(anthropic, "Anthropic", FakeAnthropic)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-extraction")
+    at = upload(app().run(), "plot.png", png_file(3000, 1500))
+    next(b for b in at.button if "Extract all" in b.label).click().run()
+    assert not at.exception
+
+    (request,) = sent
+    source = request["messages"][0]["content"][0]["source"]
+    image = Image.open(io.BytesIO(base64.b64decode(source["data"])))
+    assert image.size == (figure_images.MAX_API_WIDTH, 1000)
+    assert at.dataframe
