@@ -1,6 +1,7 @@
 """Tests for figure_images.py: image sizes, and reading each upload once."""
 
 import base64
+import gc
 import io
 import zipfile
 
@@ -11,6 +12,7 @@ from figure_images import (
     MAX_API_WIDTH,
     MAX_DISPLAY_WIDTH,
     file_to_figures,
+    held_summary,
     image_to_base64,
     make_figure,
     pdf_to_figures,
@@ -78,6 +80,27 @@ class TestFigureSizes:
         if limit is None:
             pytest.skip("this Streamlit no longer exposes MAXIMUM_CONTENT_WIDTH")
         assert limit >= MAX_DISPLAY_WIDTH
+
+
+class TestHeldSummary:
+    def test_counts_the_figures_that_are_still_held_and_their_size(self):
+        gc.collect()
+        before = held_summary()
+        wide = make_figure("wide", Image.new("RGB", (3000, 1500), "white"))
+        small = make_figure("small", Image.new("RGB", (800, 600), "white"))
+        held = len(wide.png) + len(wide.preview) + len(small.png)
+
+        def parse(summary: str) -> tuple[int, float]:
+            words = summary.split()
+            return int(words[3]), float(words[5])
+
+        assert parse(held_summary())[0] == parse(before)[0] + 2
+        assert parse(held_summary())[1] == pytest.approx(
+            parse(before)[1] + held / 1e6, abs=1,
+        )
+        del wide, small
+        gc.collect()
+        assert held_summary() == before
 
 
 class TestFilesToFigures:

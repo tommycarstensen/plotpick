@@ -25,9 +25,14 @@ import anthropic
 import pandas as pd
 import requests
 import streamlit as st
-import streamlit.components.v1
 
-from figure_images import Figure, image_to_base64, pdf_to_figures, sync_uploads
+from figure_images import (
+    Figure,
+    held_summary,
+    image_to_base64,
+    pdf_to_figures,
+    sync_uploads,
+)
 from models import (
     DEFAULT_MODEL,
     MODEL_LABELS,
@@ -42,6 +47,7 @@ from models import (
     shared_key_from_environment,
 )
 from pmc import download_pmc_pdf
+from process_memory import log_memory
 
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -57,6 +63,10 @@ TEXT_LIGHT = "#e5e9ee"
 ACCEPTED_TYPES: list[str] = [
     "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp", "pdf", "zip",
 ]
+
+TAB_IMAGES = "\U0001f5c2  Images"
+TAB_RESULTS = "\U0001f4cb  Results"
+TAB_EXPORT = "\U0001f4e5  Export"
 
 # ---------------------------------------------------------------------------
 # Extraction prompt (derived from figure_extraction_instructions.md)
@@ -311,6 +321,24 @@ def _dataframe_to_r(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def _one_type_per_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the table as it is shown: a column mixing text and numbers as text.
+
+    The model sometimes answers "Baseline" in one row and 6 in the next.
+    st.dataframe() sends the table as Arrow, which takes one type per column;
+    given such a column, Streamlit logs a traceback and then makes this same
+    conversion itself.  Exports keep the values as the model gave them.
+    """
+    shown = df.copy()
+    for name, column in df.items():
+        cells = list(zip(column.tolist(), column.notna().tolist(), strict=True))
+        if {isinstance(value, str) for value, present in cells if present} == {
+            True, False,
+        }:
+            shown[name] = [str(value) if present else value for value, present in cells]
+    return shown
+
+
 # ---------------------------------------------------------------------------
 # Session state defaults
 # ---------------------------------------------------------------------------
@@ -436,6 +464,7 @@ with st.sidebar:
                             f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures "
                             "detected"
                         )
+            log_memory(f"fetching {len(raw_ids)} PubMed ID(s)", held_summary())
 
     st.session_state.all_images = upload_figures + [
         figure
@@ -572,22 +601,17 @@ if images_to_extract:
             msg += f"  {n_err} failed."
         status.update(label=msg, state="complete", expanded=False)
 
+    log_memory(f"extracting {total} figure(s)", held_summary())
     st.session_state.results = results
-    # Auto-switch to the Results tab via JS (Streamlit has no Python API
-    # for programmatic tab selection).
-    streamlit.components.v1.html(
-        """<script>
-        const tabs = window.parent.document.querySelectorAll(
-            'button[data-baseweb="tab"]'
-        );
-        if (tabs.length > 1) tabs[1].click();
-        </script>""",
-        height=0,
-    )
+    # Show the Results tab: the tabs below read their selection from this key.
+    st.session_state.active_tab = TAB_RESULTS
 
 # -- Display results --------------------------------------------------------
+# on_change="rerun" is what makes the tabs keep their selection in Session
+# State, so that an extraction can select Results.  It replaces a script that
+# clicked the tab through st.components.v1.html, which Streamlit is removing.
 tab_gallery, tab_results, tab_export = st.tabs(
-    ["\U0001f5c2  Images", "\U0001f4cb  Results", "\U0001f4e5  Export"]
+    [TAB_IMAGES, TAB_RESULTS, TAB_EXPORT], key="active_tab", on_change="rerun",
 )
 
 with tab_gallery:
@@ -692,6 +716,7 @@ with tab_results:
                             if col in uncertain_mask.columns:
                                 uncertain_mask.at[i, col] = True
 
+                    df = _one_type_per_column(df)
                     if uncertain_mask.any().any():
                         styled = df.style.apply(
                             lambda col, mask=uncertain_mask: [
@@ -727,7 +752,9 @@ with tab_export:
             st.warning("No data rows found across all extractions.")
         else:
             combined = pd.DataFrame(all_rows)
-            st.dataframe(combined, width="stretch", hide_index=True)
+            st.dataframe(
+                _one_type_per_column(combined), width="stretch", hide_index=True,
+            )
 
             # Format picker (2 rows of 3 -- stacks on mobile via CSS)
             fmt_row1 = st.columns(3)

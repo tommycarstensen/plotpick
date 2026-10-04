@@ -30,4 +30,4 @@ jobs:
       - run: pip install -r requirements.txt pytest ruff pycodestyle pyright
       - run: ruff check .
       - run: pycodestyle .
-      - run: pyright models.py streamlit_app.py pdf_figures.py figure_images.py pdf_backend_pymupdf.py pdf_backend_pdfium.py pmc.py tools tests
+      - run: pyright models.py streamlit_app.py pdf_figures.py figure_images.py process_memory.py pdf_backend_pymupdf.py pdf_backend_pdfium.py pmc.py tools tests
