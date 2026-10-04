@@ -1,8 +1,6 @@
-"""Tests for figure detection and rendering, per PDF backend.
+"""Tests for figure detection and rendering on PDFs read with pypdfium2.
 
-The fixtures are PDFs written by hand in pdf_builder.py.  Every test that is
-parametrised over `backend` states behaviour both backends must share; the
-PyMuPDF half disappears with the library once the port is done.
+The fixtures are PDFs written by hand in pdf_builder.py.
 """
 
 from collections.abc import Iterable, Iterator
@@ -11,7 +9,7 @@ from contextlib import contextmanager
 import pytest
 from PIL import Image
 
-from pdf_figures import BACKEND_ENV, PdfPage, Rect, find_figures, open_pdf
+from pdf_figures import PdfPage, Rect, find_figures, open_pdf
 from tests.pdf_builder import (
     PAGE_H,
     PAGE_W,
@@ -45,27 +43,21 @@ HIDDEN = (
 )
 
 
-@pytest.fixture(params=["pymupdf", "pdfium"])
-def backend(request):
-    pytest.importorskip("pymupdf" if request.param == "pymupdf" else "pypdfium2")
-    return request.param
-
-
 @contextmanager
-def only_page(spec: PageSpec, backend: str) -> Iterator[PdfPage]:
+def only_page(spec: PageSpec) -> Iterator[PdfPage]:
     """The single page of a one-page fixture, open for the with-block."""
-    with open_pdf(build_pdf([spec]), backend) as doc:
+    with open_pdf(build_pdf([spec])) as doc:
         pages = iter(doc)
         yield next(pages)
 
 
-def detect(spec: PageSpec, backend: str) -> dict[str, Rect]:
-    with only_page(spec, backend) as page:
+def detect(spec: PageSpec) -> dict[str, Rect]:
+    with only_page(spec) as page:
         return {e["label"]: e["crop_rect"] for e in find_figures(page)}
 
 
-def blocks(spec: PageSpec, backend: str) -> list[str]:
-    with only_page(spec, backend) as page:
+def blocks(spec: PageSpec) -> list[str]:
+    with only_page(spec) as page:
         return [b["text"] for b in page.text_blocks()]
 
 
@@ -80,47 +72,47 @@ def rgb(img: Image.Image, point: tuple[int, int]) -> tuple[int, ...]:
 
 
 class TestDetection:
-    def test_raster_figure_is_cropped_with_its_caption(self, backend):
-        found = detect(UPRIGHT, backend)
+    def test_raster_figure_is_cropped_with_its_caption(self):
+        found = detect(UPRIGHT)
         # Image spans x 100-300 and, from the top, y 142-292; the caption
         # baseline is 312 from the top.  20 pt margin left, 6 pt above.
         assert close_to(found["Fig_1"], (80, 136, 304, 320.5))
 
-    def test_table_is_cropped_from_caption_to_last_row(self, backend):
-        found = detect(UPRIGHT, backend)
+    def test_table_is_cropped_from_caption_to_last_row(self):
+        found = detect(UPRIGHT)
         assert close_to(found["Table_1"], (52, 376, 212.6, 444.5))
 
-    def test_a_caption_word_inside_a_paragraph_is_not_a_caption(self, backend):
+    def test_a_caption_word_inside_a_paragraph_is_not_a_caption(self):
         """ "Figure 2 shows ..." starts a line, but not a block."""
-        assert set(detect(UPRIGHT, backend)) == {"Fig_1", "Table_1"}
+        assert set(detect(UPRIGHT)) == {"Fig_1", "Table_1"}
 
-    def test_vector_figure_is_found_from_its_drawings(self, backend):
+    def test_vector_figure_is_found_from_its_drawings(self):
         spec = PageSpec(
             box(320, 200, 100, 120) + " " + box(340, 220, 40, 60)
             + " " + text(320, 180, ["Figure 3. A vector figure."])
         )
         # Boxes span, from the top, y 472-592; caption baseline at 612.
-        assert close_to(detect(spec, backend)["Fig_3"], (300, 465.5, 433.5, 620.5))
+        assert close_to(detect(spec)["Fig_3"], (300, 465.5, 433.5, 620.5))
 
-    def test_page_without_captions_gives_nothing(self, backend):
-        assert detect(PageSpec(BODY), backend) == {}
+    def test_page_without_captions_gives_nothing(self):
+        assert detect(PageSpec(BODY)) == {}
 
 
 class TestTextBlocks:
-    def test_lines_of_one_paragraph_form_one_block(self, backend):
-        (block,) = blocks(PageSpec(BODY), backend)
+    def test_lines_of_one_paragraph_form_one_block(self):
+        (block,) = blocks(PageSpec(BODY))
         assert block.startswith("Body text introducing")
         assert block.endswith("closes the paragraph.")
 
-    def test_a_gap_of_two_lines_separates_blocks(self, backend):
+    def test_a_gap_of_two_lines_separates_blocks(self):
         spec = PageSpec(text(72, 720, ["First paragraph."])
                         + " " + text(72, 700, ["Second paragraph."]))
-        assert blocks(spec, backend) == ["First paragraph.", "Second paragraph."]
+        assert blocks(spec) == ["First paragraph.", "Second paragraph."]
 
-    def test_an_indented_first_line_separates_blocks(self, backend):
+    def test_an_indented_first_line_separates_blocks(self):
         spec = PageSpec(text(72, 720, ["End of one paragraph."])
                         + " " + text(84, 708, ["Indented start of the next."]))
-        assert len(blocks(spec, backend)) == 2
+        assert len(blocks(spec)) == 2
 
     @pytest.mark.parametrize("spec", [
         # The form's own BBox cuts the caption off ...
@@ -134,14 +126,14 @@ class TestTextBlocks:
                  forms={"Fm1": FormSpec(HIDDEN, (0, 0, 400, 400)),
                         "Fm2": FormSpec("/Fm1 Do", (0, 0, 300, 100))}),
     ], ids=["form-bbox", "clip-path", "outer-form-bbox"])
-    def test_text_clipped_out_of_view_is_dropped(self, backend, spec):
+    def test_text_clipped_out_of_view_is_dropped(self, spec):
         """A cropped embedded figure must not leak its original caption."""
-        assert blocks(spec, backend) == ["Visible text inside the form."]
-        assert detect(spec, backend) == {}
+        assert blocks(spec) == ["Visible text inside the form."]
+        assert detect(spec) == {}
 
 
 class TestTextOrder:
-    def test_sideways_caption_between_body_lines_is_read_whole(self, backend):
+    def test_sideways_caption_between_body_lines_is_read_whole(self):
         """A landscape table on a portrait page: its caption runs bottom-up
         in two pieces, and the first starts level with a body line drawn just
         before it.  PDFium's own reading order sorts that piece into the body
@@ -152,27 +144,21 @@ class TestTextOrder:
             + " " + text(60, 131, ["2 | Sleep onset and wake-up time"], size=8,
                          sideways=True)
         )
-        assert blocks(spec, backend) == [
+        assert blocks(spec) == [
             "low symptom severity, although differences",
             "TABLE 2 | Sleep onset and wake-up time",
         ]
-        assert "Table_2" in detect(spec, backend)
+        assert "Table_2" in detect(spec)
 
-    def test_characters_beyond_the_basic_plane_arrive_whole(self, backend):
+    def test_characters_beyond_the_basic_plane_arrive_whole(self):
         """PDFium counts in UTF-16 units and hands such a character out as
         two surrogates, which cannot be encoded."""
-        (block,) = blocks(PageSpec(text(72, 720, ["A = 1"], font="F2")), backend)
+        (block,) = blocks(PageSpec(text(72, 720, ["A = 1"], font="F2")))
         assert block.replace(" ", "") == "\U0001d746=1"
         block.encode("utf-8")
 
 
-class TestPdfiumOnly:
-    """Cases the PyMuPDF path gets wrong, so they are not shared."""
-
-    @pytest.fixture(autouse=True)
-    def _needs_pdfium(self):
-        pytest.importorskip("pypdfium2")
-
+class TestWordSpacing:
     def test_letter_spaced_caption_is_still_a_caption(self):
         """Journals set FIGURE in spaced capitals; a fixed gap threshold
         reads that as "F I G U R E 1"."""
@@ -181,21 +167,23 @@ class TestPdfiumOnly:
             + " " + text(100, 480, ["FIGURE 1"], spacing=2)
             + " " + text(190, 480, ["Distribution of cases by age."])
         )
-        assert "Fig_1" in detect(spec, "pdfium")
+        assert "Fig_1" in detect(spec)
 
+
+class TestDrawings:
     def test_spiky_stroke_does_not_reach_beyond_its_points(self):
         """PDFium's own bounds add the mitre of every corner: here some
         250 pt past the tip of the spike at x = 300."""
         spec = PageSpec("5 w 100 M 100 300 m 300 301 l 100 302 l S")
-        with only_page(spec, "pdfium") as page:
+        with only_page(spec) as page:
             (rect,) = page.drawing_rects()
         assert rect.x1 == pytest.approx(300, abs=1)
         assert rect.x0 == pytest.approx(100, abs=1)
 
 
 class TestRendering:
-    def test_clip_is_rendered_at_the_requested_resolution(self, backend):
-        with only_page(UPRIGHT, backend) as page:
+    def test_clip_is_rendered_at_the_requested_resolution(self):
+        with only_page(UPRIGHT) as page:
             img = page.render(Rect(100, 142, 300, 292), 144)
         assert img.mode == "RGB"
         assert abs(img.width - 400) <= 2 and abs(img.height - 300) <= 2
@@ -204,33 +192,28 @@ class TestRendering:
         assert red > 150 and green < 80 and blue < 80
         assert rgb(img, (350, 250)) != (255, 255, 255)
 
-    def test_whole_page_is_rendered_without_a_clip(self, backend):
-        with only_page(UPRIGHT, backend) as page:
+    def test_whole_page_is_rendered_without_a_clip(self):
+        with only_page(UPRIGHT) as page:
             img = page.render(None, 72)
         assert abs(img.width - PAGE_W) <= 1 and abs(img.height - PAGE_H) <= 1
         assert rgb(img, (5, 5)) == (255, 255, 255)
 
-    def test_every_page_is_visited_in_order(self, backend):
+    def test_every_page_is_visited_in_order(self):
         data = build_pdf([PageSpec(BODY), UPRIGHT, PageSpec(BODY)])
-        with open_pdf(data, backend) as doc:
+        with open_pdf(data) as doc:
             assert len(doc) == 3
             counts = [len(find_figures(page)) for page in doc]
         assert counts == [0, 2, 0]
 
-    def test_a_path_opens_like_bytes(self, backend, tmp_path):
+    def test_a_path_opens_like_bytes(self, tmp_path):
         path = tmp_path / "sample.pdf"
         path.write_bytes(build_pdf([UPRIGHT]))
-        with open_pdf(path, backend) as doc:
+        with open_pdf(path) as doc:
             assert len(doc) == 1
 
 
-class TestPdfiumDisplayCoordinates:
-    """Boxes follow the page as displayed.  PyMuPDF's path did not manage
-    this on rotated pages, so these hold for the pdfium backend only."""
-
-    @pytest.fixture(autouse=True)
-    def _needs_pdfium(self):
-        pytest.importorskip("pypdfium2")
+class TestDisplayCoordinates:
+    """Boxes follow the page as displayed: /Rotate and the CropBox applied."""
 
     def test_rotated_page_matches_the_upright_page(self):
         # A landscape page shown upright by /Rotate 90: its content is the
@@ -239,8 +222,8 @@ class TestPdfiumDisplayCoordinates:
             f"0 1 -1 0 {PAGE_H} 0 cm {UPRIGHT.content}",
             width=PAGE_H, height=PAGE_W, rotate=90,
         )
-        upright = detect(UPRIGHT, "pdfium")
-        turned = detect(rotated, "pdfium")
+        upright = detect(UPRIGHT)
+        turned = detect(rotated)
         assert set(turned) == {"Fig_1", "Table_1"}
         for label, rect in upright.items():
             assert close_to(turned[label], rect, tolerance=0.5)
@@ -253,7 +236,7 @@ class TestPdfiumDisplayCoordinates:
         clip = Rect(100, 142, 300, 292)
         images = []
         for spec in (UPRIGHT, rotated):
-            with only_page(spec, "pdfium") as page:
+            with only_page(spec) as page:
                 assert (round(page.width), round(page.height)) == (PAGE_W, PAGE_H)
                 images.append(page.render(clip, 72))
         assert images[0].size == images[1].size
@@ -263,50 +246,24 @@ class TestPdfiumDisplayCoordinates:
 
     def test_cropbox_origin_is_subtracted(self):
         cropped = PageSpec(UPRIGHT.content, cropbox=(50, 60, 562, 742))
-        upright = detect(UPRIGHT, "pdfium")
-        shifted = detect(cropped, "pdfium")
+        upright = detect(UPRIGHT)
+        shifted = detect(cropped)
         # 50 pt cut off the left, 792 - 742 = 50 pt off the top.
         for label, rect in upright.items():
             expected = (rect.x0 - 50, rect.y0 - 50, rect.x1 - 50, rect.y1 - 50)
             assert close_to(shifted[label], expected, tolerance=0.5)
 
+
+class TestMisuse:
     def test_an_empty_clip_is_refused(self):
         with (
-            only_page(UPRIGHT, "pdfium") as page,
+            only_page(UPRIGHT) as page,
             pytest.raises(ValueError, match="Empty clip"),
         ):
             page.render(Rect(300, 100, 200, 400), 300)
 
     def test_a_page_kept_past_its_turn_fails_loudly(self):
-        with open_pdf(build_pdf([UPRIGHT, UPRIGHT]), "pdfium") as doc:
+        with open_pdf(build_pdf([UPRIGHT, UPRIGHT])) as doc:
             pages = list(doc)
             with pytest.raises(RuntimeError, match="used after it was closed"):
                 pages[0].text_blocks()
-
-
-class TestBackendSelection:
-    def test_environment_variable_picks_the_backend(self, monkeypatch):
-        pytest.importorskip("pypdfium2")
-        monkeypatch.setenv(BACKEND_ENV, "pdfium")
-        with open_pdf(build_pdf([UPRIGHT])) as doc:
-            assert type(doc).__module__ == "pdf_backend_pdfium"
-
-    def test_unknown_backend_is_an_error(self):
-        with pytest.raises(ValueError, match="Unknown PDF backend"):
-            open_pdf(build_pdf([UPRIGHT]), "ghostscript")
-
-
-class TestLegacyEntryPoint:
-    """validation/pipeline/match_pairs.py opens PDFs with PyMuPDF itself."""
-
-    def test_crop_rect_is_a_rectangle_pymupdf_honours(self):
-        pymupdf = pytest.importorskip("pymupdf")
-        from pdf_figures import find_figures_on_page
-
-        page = pymupdf.open(stream=build_pdf([UPRIGHT]), filetype="pdf")[0]
-        (figure,) = [e for e in find_figures_on_page(page) if e["label"] == "Fig_1"]
-        assert isinstance(figure["crop_rect"], pymupdf.Rect)
-        pix = page.get_pixmap(clip=figure["crop_rect"])
-        # Anything PyMuPDF does not recognise as a rectangle renders the
-        # whole 612 x 792 page instead of the crop.
-        assert (pix.width, pix.height) == (224, 185)

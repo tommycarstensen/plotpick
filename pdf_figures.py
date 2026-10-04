@@ -4,12 +4,9 @@ Standalone module with no Streamlit dependency -- usable from both the app
 and from batch scripts.
 
 The detection works on plain page facts (text blocks, image boxes, drawing
-boxes), which a backend module reads from the PDF.  TEMPORARY, while the
-move off PyMuPDF is being evaluated: two backends exist side by side and
-PLOTPICK_PDF_BACKEND picks one ("pymupdf", the default, or "pdfium").
+boxes), which pdf_backend_pdfium reads from the PDF with pypdfium2.
 """
 
-import os
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -28,9 +25,6 @@ MIN_IMG_DIM = 50
 H_MARGIN = 20
 V_MARGIN = 6
 
-BACKEND_ENV = "PLOTPICK_PDF_BACKEND"
-DEFAULT_BACKEND = "pymupdf"
-
 
 @dataclass
 class Rect:
@@ -46,7 +40,7 @@ class Rect:
 
 
 class PdfPage(Protocol):
-    """What a backend exposes for one page."""
+    """What the backend exposes for one page."""
 
     width: float
     height: float
@@ -65,7 +59,7 @@ class PdfPage(Protocol):
 
 
 class PdfDocument(Protocol):
-    """What a backend exposes for one open PDF."""
+    """What the backend exposes for one open PDF."""
 
     def __len__(self) -> int: ...
 
@@ -84,16 +78,11 @@ class PdfDocument(Protocol):
     def close(self) -> None: ...
 
 
-def open_pdf(source: bytes | str | Path, backend: str | None = None) -> PdfDocument:
-    """Open a PDF, given as bytes or a path, with the selected backend."""
-    name = backend or os.environ.get(BACKEND_ENV) or DEFAULT_BACKEND
-    if name == "pymupdf":
-        from pdf_backend_pymupdf import Document as PymupdfDocument
-        return PymupdfDocument(source)
-    if name == "pdfium":
-        from pdf_backend_pdfium import Document as PdfiumDocument
-        return PdfiumDocument(source)
-    raise ValueError(f"Unknown PDF backend {name!r}: use 'pymupdf' or 'pdfium'")
+def open_pdf(source: bytes | str | Path) -> PdfDocument:
+    """Open a PDF, given as bytes or a path."""
+    # Imported here because the backend imports Rect from this module.
+    from pdf_backend_pdfium import Document
+    return Document(source)
 
 
 def label_from_caption(text: str) -> str | None:
@@ -143,22 +132,6 @@ def _padded_rect(
         max(0, x0 - H_MARGIN), max(0, y0 - V_MARGIN),
         min(pw, x1 + H_MARGIN), min(ph, y1 + V_MARGIN),
     )
-
-
-def find_figures_on_page(page: Any) -> list[dict[str, Any]]:
-    """Detect figures/tables on a raw PyMuPDF page (the pre-backend entry point).
-
-    Kept for callers that open the PDF with PyMuPDF themselves and pass the
-    crop_rect to page.get_pixmap(clip=).  That needs a real pymupdf.Rect:
-    given any other rectangle type, PyMuPDF silently renders the whole page.
-    """
-    import pymupdf
-
-    from pdf_backend_pymupdf import Page as PymupdfPage
-    elements = find_figures(PymupdfPage(page))
-    for element in elements:
-        element["crop_rect"] = pymupdf.Rect(*element["crop_rect"])
-    return elements
 
 
 def find_figures(page: PdfPage) -> list[dict[str, Any]]:
