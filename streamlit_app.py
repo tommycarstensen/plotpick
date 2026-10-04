@@ -314,6 +314,24 @@ def _dataframe_to_r(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def _one_type_per_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the table as it is shown: a column mixing text and numbers as text.
+
+    The model sometimes answers "Baseline" in one row and 6 in the next.
+    st.dataframe() sends the table as Arrow, which takes one type per column;
+    given such a column, Streamlit logs a traceback and then makes this same
+    conversion itself.  Exports keep the values as the model gave them.
+    """
+    shown = df.copy()
+    for name, column in df.items():
+        cells = list(zip(column.tolist(), column.notna().tolist(), strict=True))
+        if {isinstance(value, str) for value, present in cells if present} == {
+            True, False,
+        }:
+            shown[name] = [str(value) if present else value for value, present in cells]
+    return shown
+
+
 # ---------------------------------------------------------------------------
 # Session state defaults
 # ---------------------------------------------------------------------------
@@ -689,6 +707,7 @@ with tab_results:
                             if col in uncertain_mask.columns:
                                 uncertain_mask.at[i, col] = True
 
+                    df = _one_type_per_column(df)
                     if uncertain_mask.any().any():
                         styled = df.style.apply(
                             lambda col, mask=uncertain_mask: [
@@ -724,7 +743,9 @@ with tab_export:
             st.warning("No data rows found across all extractions.")
         else:
             combined = pd.DataFrame(all_rows)
-            st.dataframe(combined, width="stretch", hide_index=True)
+            st.dataframe(
+                _one_type_per_column(combined), width="stretch", hide_index=True,
+            )
 
             # Format picker (2 rows of 3 -- stacks on mobile via CSS)
             fmt_row1 = st.columns(3)

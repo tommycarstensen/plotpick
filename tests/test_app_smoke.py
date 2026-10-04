@@ -9,6 +9,7 @@ AttributeError that crashed the Results tab whenever the model returned
 import base64
 import io
 import json
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -220,3 +221,35 @@ def test_extraction_shows_the_results_tab(app, fake_anthropic):
     at = extract_all(at)
     assert not at.exception
     assert at.session_state.active_tab == TABS[1]
+
+
+@pytest.fixture
+def arrow_complaints():
+    """What Streamlit logs when it cannot send a table to the browser as it is."""
+    messages: list[str] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    logger = logging.getLogger("streamlit.dataframe_util")
+    handler = Collect()
+    logger.addHandler(handler)
+    yield messages
+    logger.removeHandler(handler)
+
+
+def test_column_mixing_text_and_numbers_is_shown_as_text(
+    app, fake_anthropic, arrow_complaints,
+):
+    """Cloud log, 2 Oct 2026: "Conversion failed for column timepoint"."""
+    fake_anthropic.answer["data"] = [
+        {"group": "A", "timepoint": "Baseline", "mean": 1.5, "uncertain": []},
+        {"group": "A", "timepoint": 6, "mean": 2.5, "uncertain": []},
+        {"group": "A", "timepoint": 70.0, "mean": None, "uncertain": ["mean"]},
+    ]
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    assert arrow_complaints == []
+    shown = [frame.value["timepoint"].tolist() for frame in at.dataframe]
+    assert shown == [["Baseline", "6", "70.0"]] * 2  # Results tab, Export tab
