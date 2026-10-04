@@ -13,24 +13,21 @@ environment variable or in .streamlit/secrets.toml:
     ANTHROPIC_API_KEY = "sk-ant-..."
 """
 
-import base64
 import io
 import json
 import re
 import xml.etree.ElementTree as ET
-import zipfile
 from datetime import datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import anthropic
 import pandas as pd
-import pymupdf
 import requests
 import streamlit as st
 import streamlit.components.v1
-from PIL import Image
 
+from figure_images import Figure, image_to_base64, pdf_to_figures, sync_uploads
 from models import (
     DEFAULT_MODEL,
     MODEL_LABELS,
@@ -44,7 +41,6 @@ from models import (
     resolve_api_key,
     shared_key_from_environment,
 )
-from pdf_figures import find_figures_on_page as _find_figures_on_page
 from pmc import download_pmc_pdf
 
 if TYPE_CHECKING:
@@ -58,9 +54,6 @@ BLUE = "#007dbb"
 LIGHT_BLUE = "#ccd3dd"
 TEXT_LIGHT = "#e5e9ee"
 
-IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
-)
 ACCEPTED_TYPES: list[str] = [
     "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp", "pdf", "zip",
 ]
@@ -141,110 +134,6 @@ st.set_page_config(
 
 _CSS_PATH = Path(__file__).parent / "style.css"
 st.markdown(f"<style>{_CSS_PATH.read_text()}</style>", unsafe_allow_html=True)
-
-
-# ---------------------------------------------------------------------------
-# Helpers -- file processing
-# ---------------------------------------------------------------------------
-MAX_API_WIDTH = 2000  # Max width for API images (balance quality vs tokens)
-
-
-def _resize_for_api(img: Image.Image) -> Image.Image:
-    """Scale image down to MAX_API_WIDTH for the API, preserving aspect ratio."""
-    if img.width > MAX_API_WIDTH:
-        ratio = MAX_API_WIDTH / img.width
-        new_size = (MAX_API_WIDTH, int(img.height * ratio))
-        return img.resize(new_size, Image.Resampling.LANCZOS)
-    return img
-
-
-def _pix_to_png_bytes(pix: pymupdf.Pixmap) -> bytes:
-    """Convert a PyMuPDF Pixmap to compressed PNG bytes."""
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
-
-
-def _pdf_to_images(data: bytes, name: str) -> list[tuple[str, bytes]]:
-    """Extract individual figures from a PDF as PNG bytes.
-
-    Uses caption detection to crop each figure/table separately.
-    Falls back to full-page rendering when no captions are found.
-    """
-    results: list[tuple[str, bytes]] = []
-    doc = pymupdf.open(stream=data, filetype="pdf")
-    mat = pymupdf.Matrix(300 / 72, 300 / 72)  # 300 DPI for better readability
-
-    for page_idx in range(len(doc)):
-        page = doc[page_idx]
-        elements = _find_figures_on_page(page)
-
-        if elements:
-            for elem in elements:
-                pix = page.get_pixmap(matrix=mat, clip=elem["crop_rect"])
-                label = f"{name} p.{page_idx + 1} {elem['label']}"
-                results.append((label, _pix_to_png_bytes(pix)))
-        else:
-            # No figures detected -- render full page as fallback
-            pix = page.get_pixmap(matrix=mat)
-            results.append((f"{name} p.{page_idx + 1}", _pix_to_png_bytes(pix)))
-
-    doc.close()
-    return results
-
-
-def _img_to_png_bytes(raw: bytes) -> bytes:
-    """Convert any supported image format to PNG bytes."""
-    img = Image.open(io.BytesIO(raw)).convert("RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
-
-
-def _process_zip(
-    data: bytes,
-    zip_name: str,
-) -> list[tuple[str, bytes]]:
-    """Extract images and PDFs from a ZIP archive as PNG bytes."""
-    results: list[tuple[str, bytes]] = []
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        for entry in sorted(zf.namelist()):
-            suffix = PurePosixPath(entry).suffix.lower()
-            label = f"{zip_name}/{entry}"
-            if suffix == ".pdf":
-                results.extend(_pdf_to_images(zf.read(entry), label))
-            elif suffix in IMAGE_EXTENSIONS:
-                results.append((label, _img_to_png_bytes(zf.read(entry))))
-    return results
-
-
-def _process_upload(
-    uploaded: "UploadedFile",
-) -> list[tuple[str, bytes]]:
-    """Route a single uploaded file to the correct processor."""
-    name: str = uploaded.name
-    data: bytes = uploaded.read()
-    suffix = PurePosixPath(name).suffix.lower()
-
-    if suffix == ".zip":
-        return _process_zip(data, name)
-    if suffix == ".pdf":
-        return _pdf_to_images(data, name)
-    if suffix in IMAGE_EXTENSIONS:
-        return [(name, _img_to_png_bytes(data))]
-    return []
-
-
-def _image_to_base64(png_bytes: bytes) -> str:
-    """Encode PNG bytes as a base64 string for the API, resizing if needed."""
-    img = Image.open(io.BytesIO(png_bytes))
-    if img.width > MAX_API_WIDTH:
-        img = _resize_for_api(img)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
-    return base64.b64encode(png_bytes).decode("ascii")
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +235,7 @@ def _extract_from_image(
     model: str,
 ) -> dict[str, Any]:
     """Send a single image to Claude and parse the JSON response."""
-    b64 = _image_to_base64(png_bytes)
+    b64 = image_to_base64(png_bytes)
 
     response = client.messages.create(
         model=model,
@@ -426,6 +315,8 @@ def _dataframe_to_r(df: pd.DataFrame) -> str:
 # Session state defaults
 # ---------------------------------------------------------------------------
 _SESSION_DEFAULTS: dict[str, object] = {
+    "upload_figures": {},  # file id -> figures, see figure_images.sync_uploads
+    "pubmed_figures": {},  # PMCID -> figures
     "all_images": [],
     "results": {},
 }
@@ -494,12 +385,13 @@ with st.sidebar:
         help="Images, PDFs, or ZIP archives (may contain PDFs and images).",
     )
 
-    if uploaded_files:
-        all_imgs: list[tuple[str, bytes]] = []
-        for uf in uploaded_files:
-            all_imgs.extend(_process_upload(uf))
-        if all_imgs:
-            st.session_state.all_images = all_imgs
+    # The script reruns on every click, and the uploader hands over the same
+    # files each time.  An upload is rendered once and kept until it is removed
+    # from the uploader; rendering it again on every rerun costs tens of MB per
+    # PDF page, which Community Cloud's memory limit does not allow for.
+    upload_figures = sync_uploads(
+        st.session_state.upload_figures, uploaded_files or [],
+    )
 
     st.markdown("**-- or --**")
 
@@ -520,7 +412,6 @@ with st.sidebar:
         if not raw_ids:
             st.error("No valid PubMed IDs found in input.")
         else:
-            pm_imgs: list[tuple[str, bytes]] = []
             with st.status(f"Fetching {len(raw_ids)} ID(s)...", expanded=True):
                 mapping = _pmids_to_pmcids(raw_ids)
                 for orig_id, pmcid in mapping.items():
@@ -534,9 +425,9 @@ with st.sidebar:
                             f"\u274c  {pmcid} -- PDF not available (not open access?)"
                         )
                         continue
-                    figures = _pdf_to_images(pdf_bytes, pmcid)
+                    figures = pdf_to_figures(pdf_bytes, pmcid)
                     if figures:
-                        pm_imgs.extend(figures)
+                        st.session_state.pubmed_figures[pmcid] = figures
                         st.write(
                             f"\u2705  {pmcid} -- {len(figures)} figure(s) extracted"
                         )
@@ -545,17 +436,19 @@ with st.sidebar:
                             f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures "
                             "detected"
                         )
-            if pm_imgs:
-                st.session_state.all_images = (
-                    list(st.session_state.all_images) + pm_imgs
-                )
+
+    st.session_state.all_images = upload_figures + [
+        figure
+        for figures in st.session_state.pubmed_figures.values()
+        for figure in figures
+    ]
 
     # Read selection state from checkbox widget keys (updated by Streamlit
     # before the script reruns, so this is always current).
     n_loaded = len(st.session_state.all_images)
     selected_labels: set[str] = {
-        lbl
-        for i, (lbl, _) in enumerate(st.session_state.all_images)
+        figure.label
+        for i, figure in enumerate(st.session_state.all_images)
         if st.session_state.get(f"sel_{i}", False)
     }
     n_selected = len(selected_labels)
@@ -634,17 +527,17 @@ if not st.session_state.all_images:
     st.stop()
 
 # -- Determine which images to extract --------------------------------------
-images_to_extract: list[tuple[str, bytes]] = []
+images_to_extract: list[Figure] = []
 if run_all:
     images_to_extract = list(st.session_state.all_images)
 elif run_selected:
     images_to_extract = [
-        (lbl, img) for lbl, img in st.session_state.all_images
-        if lbl in selected_labels
+        figure for figure in st.session_state.all_images
+        if figure.label in selected_labels
     ]
 
 
-@st.cache_resource
+@st.cache_resource(max_entries=8)
 def _get_client(key: str) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=key)
 
@@ -659,11 +552,12 @@ if images_to_extract:
         expanded=True,
     ) as status:
         progress = st.progress(0)
-        for i, (label, img) in enumerate(images_to_extract):
+        for i, figure in enumerate(images_to_extract):
+            label = figure.label
             st.write(f"\U0001f50d  **[{i + 1}/{total}]** {label}")
             progress.progress((i + 1) / total)
             try:
-                result = _extract_from_image(client, img, model)
+                result = _extract_from_image(client, figure.png, model)
                 results[label] = result
                 n_rows = len(result.get("data", []))
                 st.write(f"\u2705  {n_rows} row(s) extracted")
@@ -708,10 +602,10 @@ with tab_gallery:
                 st.session_state[f"sel_{j}"] = False
 
     gallery_cols = st.columns(min(len(st.session_state.all_images), 3))
-    for i, (label, img) in enumerate(st.session_state.all_images):
+    for i, figure in enumerate(st.session_state.all_images):
         with gallery_cols[i % 3]:
-            st.checkbox(label, key=f"sel_{i}")
-            st.image(img, caption=label, width="stretch")
+            st.checkbox(figure.label, key=f"sel_{i}")
+            st.image(figure.preview, caption=figure.label, width="stretch")
 
 with tab_results:
     if not st.session_state.results:
@@ -734,7 +628,9 @@ with tab_results:
                 "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
             )
         # Build a lookup from label -> PNG bytes for showing source figures
-        _img_lookup: dict[str, bytes] = dict(st.session_state.all_images)
+        _img_lookup: dict[str, bytes] = {
+            figure.label: figure.preview for figure in st.session_state.all_images
+        }
 
         for label, result in st.session_state.results.items():
             st.markdown(
