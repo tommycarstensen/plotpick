@@ -18,6 +18,12 @@ The full render is kept, and cut down to MAX_API_WIDTH only when it is sent,
 because it is the smaller thing to hold: a page rendered at 300 DPI
 compresses better as PNG than the same page scaled down (5.5 MB against
 9.6 MB for the nine images of one eight-page paper).
+
+A file that cannot be read never raises here.  Whatever could be read is
+returned, and each file, archive entry, page or crop that could not is
+described in a line added to the caller's `problems` list.  An exception
+would end the Streamlit script, and the uploader would hand the same file
+over again on the next rerun.
 """
 
 import base64
@@ -31,7 +37,7 @@ from typing import Protocol
 
 from PIL import Image
 
-from pdf_figures import find_figures, open_pdf
+from pdf_figures import PdfError, find_figures, open_pdf
 from process_memory import log_memory, return_freed_memory
 
 MAX_API_WIDTH = 2000  # Max width for API images (balance quality vs tokens)
@@ -111,28 +117,51 @@ def image_to_base64(png_bytes: bytes) -> str:
     return base64.b64encode(png_bytes).decode("ascii")
 
 
-def pdf_to_figures(data: bytes, name: str) -> list[Figure]:
+def pdf_to_figures(
+    data: bytes, name: str, problems: list[str] | None = None,
+) -> list[Figure]:
     """Extract individual figures from a PDF.
 
     Uses caption detection to crop each figure/table separately.
     Falls back to full-page rendering when no captions are found.
     """
+    if problems is None:
+        problems = []
     results: list[Figure] = []
     dpi = 300  # for better readability
+    pages_read = 0
 
-    with open_pdf(data) as doc:
-        for page_idx, page in enumerate(doc):
-            elements = find_figures(page)
-
-            if elements:
-                for elem in elements:
-                    img = page.render(elem["crop_rect"], dpi)
-                    label = f"{name} p.{page_idx + 1} {elem['label']}"
-                    results.append(make_figure(label, img))
-            else:
+    try:
+        with open_pdf(data) as doc:
+            for page_idx, page in enumerate(doc):
+                where = f"{name} p.{page_idx + 1}"
+                pages_read = page_idx + 1
+                try:
+                    elements = find_figures(page)
+                except PdfError as exc:
+                    problems.append(f"{where}: skipped ({exc})")
+                    continue
                 # No figures detected -- render full page as fallback
-                img = page.render(None, dpi)
-                results.append(make_figure(f"{name} p.{page_idx + 1}", img))
+                regions = [
+                    (f"{where} {elem['label']}", elem["crop_rect"])
+                    for elem in elements
+                ] or [(where, None)]
+                for label, clip in regions:
+                    try:
+                        img = page.render(clip, dpi)
+                    except PdfError as exc:
+                        problems.append(f"{label}: skipped ({exc})")
+                        continue
+                    results.append(make_figure(label, img))
+    except PdfError as exc:
+        # The file did not open, or the next page did not load: keep what the
+        # pages before it gave.
+        if pages_read:
+            problems.append(
+                f"{name}: nothing after p.{pages_read} could be read ({exc})"
+            )
+        else:
+            problems.append(f"{name}: could not be read as a PDF ({exc})")
 
     return_freed_memory()
     return results
@@ -143,48 +172,96 @@ def image_to_figure(raw: bytes, label: str) -> Figure:
     return make_figure(label, Image.open(io.BytesIO(raw)).convert("RGB"))
 
 
-def zip_to_figures(data: bytes, zip_name: str) -> list[Figure]:
+# What Pillow raises for a file that is not an image it can decode: OSError
+# covers unknown formats and truncated files, the others broken headers and
+# chunks, and images whose stated size is implausibly large.
+_IMAGE_ERRORS = (OSError, ValueError, SyntaxError, Image.DecompressionBombError)
+
+
+def _image_to_figures(raw: bytes, label: str, problems: list[str]) -> list[Figure]:
+    try:
+        return [image_to_figure(raw, label)]
+    except _IMAGE_ERRORS as exc:
+        problems.append(f"{label}: could not be read as an image ({exc})")
+        return []
+
+
+def zip_to_figures(
+    data: bytes, zip_name: str, problems: list[str] | None = None,
+) -> list[Figure]:
     """Extract the images and PDFs in a ZIP archive."""
+    if problems is None:
+        problems = []
     results: list[Figure] = []
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        for entry in sorted(zf.namelist()):
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        problems.append(f"{zip_name}: could not be read as a ZIP archive ({exc})")
+        return results
+    with archive as zf:
+        for info in sorted(zf.infolist(), key=lambda info: info.filename):
+            entry = info.filename
             suffix = PurePosixPath(entry).suffix.lower()
             label = f"{zip_name}/{entry}"
+            if suffix != ".pdf" and suffix not in IMAGE_EXTENSIONS:
+                continue
+            if info.flag_bits & 0x1:
+                problems.append(f"{label}: skipped (password-protected)")
+                continue
+            try:
+                raw = zf.read(info)
+            except (zipfile.BadZipFile, NotImplementedError) as exc:
+                problems.append(f"{label}: could not be unpacked ({exc})")
+                continue
             if suffix == ".pdf":
-                results.extend(pdf_to_figures(zf.read(entry), label))
-            elif suffix in IMAGE_EXTENSIONS:
-                results.append(image_to_figure(zf.read(entry), label))
+                results.extend(pdf_to_figures(raw, label, problems))
+            else:
+                results.extend(_image_to_figures(raw, label, problems))
     return results
 
 
-def file_to_figures(name: str, data: bytes) -> list[Figure]:
+def file_to_figures(
+    name: str, data: bytes, problems: list[str] | None = None,
+) -> list[Figure]:
     """Route a single file to the correct processor."""
+    if problems is None:
+        problems = []
     suffix = PurePosixPath(name).suffix.lower()
 
     if suffix == ".zip":
-        return zip_to_figures(data, name)
+        return zip_to_figures(data, name, problems)
     if suffix == ".pdf":
-        return pdf_to_figures(data, name)
+        return pdf_to_figures(data, name, problems)
     if suffix in IMAGE_EXTENSIONS:
-        return [image_to_figure(data, name)]
+        return _image_to_figures(data, name, problems)
     return []
 
 
 def sync_uploads(
-    done: dict[str, list[Figure]], uploads: Sequence[Upload],
+    done: dict[str, list[Figure]],
+    uploads: Sequence[Upload],
+    problems: dict[str, list[str]] | None = None,
 ) -> list[Figure]:
     """Return the figures of the current uploads, reading only the new files.
 
     `done` maps a file id to that file's figures and is updated in place: a
     file not seen before is read, a file no longer uploaded is forgotten.
+    `problems`, if given, is kept the same way: file id to what could not be
+    read in that file, for as long as the file stays uploaded.
     """
+    if problems is None:
+        problems = {}
     current = {upload.file_id for upload in uploads}
     for file_id in list(done):
         if file_id not in current:
             del done[file_id]
+            problems.pop(file_id, None)
     new = [upload for upload in uploads if upload.file_id not in done]
     for upload in new:
-        done[upload.file_id] = file_to_figures(upload.name, upload.read())
+        notes: list[str] = []
+        done[upload.file_id] = file_to_figures(upload.name, upload.read(), notes)
+        if notes:
+            problems[upload.file_id] = notes
     if new:
         log_memory(f"reading {len(new)} upload(s)", held_summary())
     return [figure for upload in uploads for figure in done[upload.file_id]]

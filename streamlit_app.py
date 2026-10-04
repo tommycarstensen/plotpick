@@ -344,6 +344,7 @@ def _one_type_per_column(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 _SESSION_DEFAULTS: dict[str, object] = {
     "upload_figures": {},  # file id -> figures, see figure_images.sync_uploads
+    "upload_problems": {},  # file id -> what could not be read in that file
     "pubmed_figures": {},  # PMCID -> figures
     "all_images": [],
     "results": {},
@@ -419,7 +420,11 @@ with st.sidebar:
     # PDF page, which Community Cloud's memory limit does not allow for.
     upload_figures = sync_uploads(
         st.session_state.upload_figures, uploaded_files or [],
+        st.session_state.upload_problems,
     )
+    for uploaded in uploaded_files or []:
+        for problem in st.session_state.upload_problems.get(uploaded.file_id, []):
+            st.warning(problem)
 
     st.markdown("**-- or --**")
 
@@ -453,7 +458,10 @@ with st.sidebar:
                             f"\u274c  {pmcid} -- PDF not available (not open access?)"
                         )
                         continue
-                    figures = pdf_to_figures(pdf_bytes, pmcid)
+                    problems: list[str] = []
+                    figures = pdf_to_figures(pdf_bytes, pmcid, problems)
+                    for problem in problems:
+                        st.write(f"\u26a0\ufe0f  {problem}")
                     if figures:
                         st.session_state.pubmed_figures[pmcid] = figures
                         st.write(

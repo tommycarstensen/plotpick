@@ -139,9 +139,9 @@ def test_upload_is_rendered_once_not_on_every_rerun(app, monkeypatch):
     rendered: list[str] = []
     real = figure_images.file_to_figures
 
-    def counting(name: str, data: bytes):
+    def counting(name: str, data: bytes, problems: list[str]):
         rendered.append(name)
-        return real(name, data)
+        return real(name, data, problems)
 
     monkeypatch.setattr(figure_images, "file_to_figures", counting)
     at = upload(app().run(), "plot.png", png_file(3000, 1500))
@@ -153,6 +153,25 @@ def test_upload_is_rendered_once_not_on_every_rerun(app, monkeypatch):
     at.selectbox[0].set_value("Haiku 4.5").run()
     assert not at.exception
     assert rendered == ["plot.png"]
+
+
+def test_an_unreadable_upload_is_explained_not_a_crash(app, monkeypatch):
+    """A file PDFium cannot open used to end the script with a traceback, and
+    again on every rerun, until the visitor took the file out of the uploader."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    at = app().run()
+    if not hasattr(at, "file_uploader"):
+        pytest.skip("this Streamlit's AppTest cannot simulate an upload")
+    at = at.file_uploader[0].set_value([
+        ("paper.pdf", b"hello, this is not a PDF", "application/pdf"),
+        ("plot.png", png_file(40, 30), "image/png"),
+    ]).run()
+    # The explanation stays while the file does, and the good file still loads.
+    for run in (at, at.run()):
+        assert not run.exception
+        warnings = [w.value for w in run.warning]
+        assert any("paper.pdf: could not be read as a PDF" in w for w in warnings)
+        assert any("1 image(s) loaded" in c.value for c in run.caption)
 
 
 def test_removing_an_upload_removes_its_figures(app, monkeypatch):

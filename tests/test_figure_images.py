@@ -135,7 +135,96 @@ class TestFilesToFigures:
         assert file_to_figures("notes.txt", b"not a figure") == []
 
 
+def zip_file(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+class TestUnreadableFiles:
+    """A bad file must not raise: that would end the script on every rerun."""
+
+    @pytest.mark.parametrize("data", [b"", b"hello world", pdf_file()[:200]],
+                             ids=["empty", "not-a-pdf", "truncated"])
+    def test_a_file_that_is_not_a_pdf_is_reported(self, data):
+        problems: list[str] = []
+        assert file_to_figures("paper.pdf", data, problems) == []
+        (problem,) = problems
+        assert problem.startswith("paper.pdf: could not be read as a PDF")
+
+    def test_a_file_that_is_not_an_image_is_reported(self):
+        problems: list[str] = []
+        assert file_to_figures("scan.png", b"not an image", problems) == []
+        (problem,) = problems
+        assert problem.startswith("scan.png: could not be read as an image")
+
+    def test_a_truncated_image_is_reported(self):
+        buf = io.BytesIO()
+        Image.new("RGB", (400, 300), "red").save(buf, format="PNG")
+        problems: list[str] = []
+        assert file_to_figures("scan.png", buf.getvalue()[:150], problems) == []
+        assert len(problems) == 1
+
+    def test_a_file_that_is_not_a_zip_is_reported(self):
+        problems: list[str] = []
+        assert file_to_figures("batch.zip", b"not an archive", problems) == []
+        (problem,) = problems
+        assert problem.startswith("batch.zip: could not be read as a ZIP archive")
+
+    def test_one_bad_entry_does_not_cost_the_rest_of_the_archive(self):
+        archive = zip_file({
+            "a.png": png_file(40, 30), "b_bad.pdf": b"hello world",
+            "c_bad.png": b"not an image", "d.pdf": pdf_file(),
+        })
+        problems: list[str] = []
+        figures = file_to_figures("batch.zip", archive, problems)
+        assert [f.label for f in figures] == ["batch.zip/a.png", "batch.zip/d.pdf p.1"]
+        assert [problem.split(":")[0] for problem in problems] == [
+            "batch.zip/b_bad.pdf", "batch.zip/c_bad.png",
+        ]
+
+    def test_a_page_with_nothing_to_render_does_not_cost_the_other_pages(self):
+        """A CropBox outside the MediaBox leaves a page of 0 x 0 points."""
+        body = text(72, 92, ["Body text without any caption."])
+        data = build_pdf([
+            PageSpec(body),
+            PageSpec(body, width=100, height=100, cropbox=(500, 500, 600, 600)),
+            PageSpec(body),
+        ])
+        problems: list[str] = []
+        figures = pdf_to_figures(data, "paper.pdf", problems)
+        assert [f.label for f in figures] == ["paper.pdf p.1", "paper.pdf p.3"]
+        (problem,) = problems
+        assert problem.startswith("paper.pdf p.2: skipped")
+
+    def test_problems_need_not_be_collected(self):
+        assert file_to_figures("paper.pdf", b"hello world") == []
+
+
 class TestSyncUploads:
+    def test_a_file_that_cannot_be_read_is_not_read_again(self):
+        bad = FakeUpload("id-1", "paper.pdf", b"hello world")
+        good = FakeUpload("id-2", "a.png", png_file(40, 30))
+        done: dict = {}
+        problems: dict = {}
+        sync_uploads(done, [bad, good], problems)
+        sync_uploads(done, [bad, good], problems)
+        figures = sync_uploads(done, [bad, good], problems)
+        assert (bad.reads, good.reads) == (1, 1)
+        assert [f.label for f in figures] == ["a.png"]
+        assert list(problems) == ["id-1"]
+        assert problems["id-1"][0].startswith("paper.pdf: could not be read")
+
+    def test_the_problems_of_a_removed_file_are_forgotten(self):
+        bad = FakeUpload("id-1", "paper.pdf", b"hello world")
+        done: dict = {}
+        problems: dict = {}
+        sync_uploads(done, [bad], problems)
+        sync_uploads(done, [], problems)
+        assert done == {} and problems == {}
+
     def test_an_upload_is_read_once_however_often_the_script_reruns(self):
         upload = FakeUpload("id-1", "a.png", png_file(40, 30))
         done: dict = {}
