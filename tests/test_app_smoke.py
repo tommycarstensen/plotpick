@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import sys
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -162,33 +163,60 @@ def test_removing_an_upload_removes_its_figures(app, monkeypatch):
     assert any("Upload files" in i.value for i in at.info)
 
 
-def test_extraction_sends_the_upload_at_the_api_width(app, monkeypatch):
-    """End to end: an upload wider than the API limit is cut down when sent."""
-    sent: list[dict] = []
-    answer = {
-        "figure_type": "bar chart", "y_axis": "mg/L", "scale": "linear",
-        "confidence": 90, "notes": "",
-        "data": [{"group": "A", "mean": 1.5, "uncertain": []}],
-    }
+TABS = ["\U0001f5c2  Images", "\U0001f4cb  Results", "\U0001f4e5  Export"]
 
-    class FakeAnthropic:
+
+@pytest.fixture
+def fake_anthropic(monkeypatch):
+    """Stand in for the API: record each request, reply with `answer` as JSON."""
+    fake = SimpleNamespace(
+        sent=[],
+        answer={
+            "figure_type": "bar chart", "y_axis": "mg/L", "scale": "linear",
+            "confidence": 90, "notes": "",
+            "data": [{"group": "A", "mean": 1.5, "uncertain": []}],
+        },
+    )
+
+    class Client:
         def __init__(self, api_key: str):
             del api_key
             self.messages = self
 
         def create(self, **request):
-            sent.append(request)
-            text = SimpleNamespace(type="text", text=json.dumps(answer))
+            fake.sent.append(request)
+            text = SimpleNamespace(type="text", text=json.dumps(fake.answer))
             return SimpleNamespace(stop_reason="end_turn", content=[text])
 
-    monkeypatch.setattr(anthropic, "Anthropic", FakeAnthropic)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-extraction")
-    at = upload(app().run(), "plot.png", png_file(3000, 1500))
-    next(b for b in at.button if "Extract all" in b.label).click().run()
+    monkeypatch.setattr(anthropic, "Anthropic", Client)
+    # The app caches one client per key, so each test needs a key of its own.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", f"sk-ant-fake-{uuid.uuid4().hex}")
+    return fake
+
+
+def extract_all(at):
+    return next(b for b in at.button if "Extract all" in b.label).click().run()
+
+
+def test_extraction_sends_the_upload_at_the_api_width(app, fake_anthropic):
+    """End to end: an upload wider than the API limit is cut down when sent."""
+    at = extract_all(upload(app().run(), "plot.png", png_file(3000, 1500)))
     assert not at.exception
 
-    (request,) = sent
+    (request,) = fake_anthropic.sent
     source = request["messages"][0]["content"][0]["source"]
     image = Image.open(io.BytesIO(base64.b64decode(source["data"])))
     assert image.size == (figure_images.MAX_API_WIDTH, 1000)
     assert at.dataframe
+
+
+def test_extraction_shows_the_results_tab(app, fake_anthropic):
+    """The tab is selected through Session State, not by a script in an iframe."""
+    del fake_anthropic
+    at = upload(app().run(), "plot.png", png_file(40, 30))
+    assert [tab.label for tab in at.tabs] == TABS
+    assert at.session_state.active_tab == TABS[0]
+
+    at = extract_all(at)
+    assert not at.exception
+    assert at.session_state.active_tab == TABS[1]

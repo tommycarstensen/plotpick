@@ -25,7 +25,6 @@ import anthropic
 import pandas as pd
 import requests
 import streamlit as st
-import streamlit.components.v1
 
 from figure_images import Figure, image_to_base64, pdf_to_figures, sync_uploads
 from models import (
@@ -57,6 +56,10 @@ TEXT_LIGHT = "#e5e9ee"
 ACCEPTED_TYPES: list[str] = [
     "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp", "pdf", "zip",
 ]
+
+TAB_IMAGES = "\U0001f5c2  Images"
+TAB_RESULTS = "\U0001f4cb  Results"
+TAB_EXPORT = "\U0001f4e5  Export"
 
 # ---------------------------------------------------------------------------
 # Extraction prompt (derived from figure_extraction_instructions.md)
@@ -573,21 +576,15 @@ if images_to_extract:
         status.update(label=msg, state="complete", expanded=False)
 
     st.session_state.results = results
-    # Auto-switch to the Results tab via JS (Streamlit has no Python API
-    # for programmatic tab selection).
-    streamlit.components.v1.html(
-        """<script>
-        const tabs = window.parent.document.querySelectorAll(
-            'button[data-baseweb="tab"]'
-        );
-        if (tabs.length > 1) tabs[1].click();
-        </script>""",
-        height=0,
-    )
+    # Show the Results tab: the tabs below read their selection from this key.
+    st.session_state.active_tab = TAB_RESULTS
 
 # -- Display results --------------------------------------------------------
+# on_change="rerun" is what makes the tabs keep their selection in Session
+# State, so that an extraction can select Results.  It replaces a script that
+# clicked the tab through st.components.v1.html, which Streamlit is removing.
 tab_gallery, tab_results, tab_export = st.tabs(
-    ["\U0001f5c2  Images", "\U0001f4cb  Results", "\U0001f4e5  Export"]
+    [TAB_IMAGES, TAB_RESULTS, TAB_EXPORT], key="active_tab", on_change="rerun",
 )
 
 with tab_gallery:
