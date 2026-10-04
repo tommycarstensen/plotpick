@@ -26,6 +26,10 @@ H_MARGIN = 20
 V_MARGIN = 6
 
 
+class PdfError(Exception):
+    """A PDF, or one page or region of it, that cannot be read or rendered."""
+
+
 @dataclass
 class Rect:
     """A box in page points, origin top-left, as the page is displayed."""
@@ -54,7 +58,12 @@ class PdfPage(Protocol):
     def drawing_rects(self) -> list[Rect]: ...
 
     def render(self, clip: Rect | None, dpi: int) -> Image.Image:
-        """Rasterise the page, or the clip region of it, as an RGB image."""
+        """Rasterise the page, or the clip region of it, as an RGB image.
+
+        A region too large to hold at dpi is rendered at a lower resolution.
+        Raises PdfError when there is nothing to render: a clip or a page
+        that covers no pixel.
+        """
         ...
 
 
@@ -79,7 +88,11 @@ class PdfDocument(Protocol):
 
 
 def open_pdf(source: bytes | str | Path) -> PdfDocument:
-    """Open a PDF, given as bytes or a path."""
+    """Open a PDF, given as bytes or a path.
+
+    Raises PdfError for a file that is damaged, password-protected or not a
+    PDF; so do the document and its pages for a part they cannot read.
+    """
     # Imported here because the backend imports Rect from this module.
     from pdf_backend_pdfium import Document
     return Document(source)

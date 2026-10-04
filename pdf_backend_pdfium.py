@@ -19,11 +19,15 @@ PDFium is not thread-safe, and Streamlit runs every session in its own
 thread, so each call into the library is made under one module-wide lock and
 every PDFium object is closed explicitly (a garbage-collector finaliser would
 otherwise close it from whatever thread happens to run the collector).
+
+What PDFium cannot read is reported as pdf_figures.PdfError, so that callers
+need not know which library is underneath.
 """
 
 import math
 import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
 from ctypes import c_double, c_float, c_int, c_void_p, cast
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -32,7 +36,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from PIL import Image
 
-from pdf_figures import Rect
+from pdf_figures import PdfError, Rect
 
 # MuPDF's text-device thresholds, in font sizes.
 PARAGRAPH_DIST = 1.5   # baseline jump that starts a new block
@@ -54,7 +58,24 @@ STROKE_CHECK = 20.0
 
 MAX_FORM_DEPTH = 15
 
+# The most pixels one render may have.  A journal page at 300 DPI has 8 to 9
+# million and an A3 page 17 million; a poster or a plan at that resolution
+# would take gigabytes, on a server that has one.  Larger regions are
+# rendered at a lower resolution instead.
+MAX_RENDER_PIXELS = 25_000_000
+
 _LOCK = threading.RLock()
+
+
+@contextmanager
+def _pdfium() -> Iterator[None]:
+    """Hold the lock for calls into PDFium, and report its failures as PdfError."""
+    with _LOCK:
+        try:
+            yield
+        except pdfium.PdfiumError as exc:
+            raise PdfError(str(exc)) from exc
+
 
 Box = tuple[float, float, float, float]
 Matrix = tuple[float, float, float, float, float, float]
@@ -190,10 +211,11 @@ class Page:
         self._closed = False
 
     def _require_open(self) -> None:
-        if self._closed:
+        # Closing the document closes its pages too, without telling them.
+        if self._closed or self._page.raw is None:
             raise RuntimeError(
                 "PDF page used after it was closed: a page is valid only "
-                "until the document yields the next one"
+                "until the document yields the next one or is closed itself"
             )
 
     # -- coordinates -------------------------------------------------------
@@ -286,20 +308,20 @@ class Page:
             target.append(self._rect(_transform(matrix, box)))
 
     def image_rects(self) -> list[Rect]:
-        with _LOCK:
+        with _pdfium():
             self._scan()
             assert self._images is not None
             return self._images
 
     def drawing_rects(self) -> list[Rect]:
-        with _LOCK:
+        with _pdfium():
             self._scan()
             return self._drawings
 
     # -- text --------------------------------------------------------------
 
     def text_blocks(self) -> list[dict[str, Any]]:
-        with _LOCK:
+        with _pdfium():
             self._require_open()
             self._scan()
             textpage = self._page.get_textpage()
@@ -453,16 +475,27 @@ class Page:
     # -- rendering ---------------------------------------------------------
 
     def render(self, clip: Rect | None, dpi: int) -> Image.Image:
-        crop = (0.0, 0.0, 0.0, 0.0)
+        x0, y0, x1, y1 = 0.0, 0.0, self.width, self.height
         if clip is not None:
             x0, y0 = max(clip.x0, 0.0), max(clip.y0, 0.0)
             x1, y1 = min(clip.x1, self.width), min(clip.y1, self.height)
-            if x1 - x0 < 72 / dpi or y1 - y0 < 72 / dpi:
-                raise ValueError(f"Empty clip {clip} on a {self.width} x "
-                                 f"{self.height} pt page")
-            crop = (x0, self.height - y1, self.width - x1, y0)
         scale = dpi / 72
-        with _LOCK:
+        pixels = max(x1 - x0, 0.0) * max(y1 - y0, 0.0) * scale * scale
+        if pixels > MAX_RENDER_PIXELS:
+            scale *= math.sqrt(MAX_RENDER_PIXELS / pixels)
+        crop = (x0, self.height - y1, self.width - x1, y0)
+        # The size pypdfium2 will arrive at: it rounds the page and each edge
+        # of the crop up to whole pixels, which can leave a thin clip empty.
+        left, bottom, right, top = (math.ceil(edge * scale) for edge in crop)
+        columns = math.ceil(self.width * scale) - left - right
+        rows = math.ceil(self.height * scale) - bottom - top
+        if columns < 1 or rows < 1:
+            region = "page" if clip is None else f"clip {clip} on a page"
+            raise PdfError(
+                f"Nothing to render: {region} of {self.width:g} x "
+                f"{self.height:g} pt covers no pixel"
+            )
+        with _pdfium():
             self._require_open()
             # pypdfium2 is untyped, so pyright infers int from the default of 1.
             bitmap = self._page.render(
@@ -483,17 +516,17 @@ class Page:
 
 class Document:
     def __init__(self, source: bytes | str | Path):
-        with _LOCK:
+        with _pdfium():
             self._doc = pdfium.PdfDocument(source)
 
     def __len__(self) -> int:
-        with _LOCK:
+        with _pdfium():
             return len(self._doc)
 
     def __iter__(self) -> Iterator[Page]:
         """Yield the pages in order, closing each when the next is requested."""
         for index in range(len(self)):
-            with _LOCK:
+            with _pdfium():
                 page = Page(self._doc[index])
             try:
                 yield page

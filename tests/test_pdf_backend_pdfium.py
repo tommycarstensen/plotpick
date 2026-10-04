@@ -9,7 +9,8 @@ from contextlib import contextmanager
 import pytest
 from PIL import Image
 
-from pdf_figures import PdfPage, Rect, find_figures, open_pdf
+import pdf_backend_pdfium
+from pdf_figures import PdfError, PdfPage, Rect, find_figures, open_pdf
 from tests.pdf_builder import (
     PAGE_H,
     PAGE_W,
@@ -254,16 +255,69 @@ class TestDisplayCoordinates:
             assert close_to(shifted[label], expected, tolerance=0.5)
 
 
-class TestMisuse:
-    def test_an_empty_clip_is_refused(self):
-        with (
-            only_page(UPRIGHT) as page,
-            pytest.raises(ValueError, match="Empty clip"),
-        ):
-            page.render(Rect(300, 100, 200, 400), 300)
+class TestUnreadable:
+    """What PDFium cannot read arrives as PdfError, whatever PDFium raised."""
 
+    @pytest.mark.parametrize("data", [
+        b"", b"hello, this is not a PDF", build_pdf([UPRIGHT])[:200],
+    ], ids=["empty", "not-a-pdf", "truncated"])
+    def test_a_file_that_is_not_a_readable_pdf(self, data):
+        with pytest.raises(PdfError, match="Failed to load document"):
+            open_pdf(data)
+
+    @pytest.mark.parametrize("clip", [
+        Rect(300, 100, 200, 400),     # inside out
+        Rect(100, 100, 100.25, 150),  # a quarter point wide: under one pixel
+        Rect(700, 900, 800, 1000),    # off the page
+    ], ids=["inside-out", "thin", "off-page"])
+    def test_a_clip_that_covers_no_pixel(self, clip):
+        with only_page(UPRIGHT) as page, pytest.raises(PdfError, match="no pixel"):
+            page.render(clip, 300)
+
+    def test_a_thin_clip_that_still_covers_a_pixel_is_rendered(self):
+        with only_page(UPRIGHT) as page:
+            assert page.render(Rect(100, 100, 100.5, 150), 300).width >= 1
+
+    def test_a_page_with_no_visible_area(self):
+        """A CropBox outside the MediaBox leaves a page of 0 x 0 points."""
+        spec = PageSpec(BODY, width=100, height=100, cropbox=(500, 500, 600, 600))
+        with only_page(spec) as page:
+            assert find_figures(page) == []
+            with pytest.raises(PdfError, match="no pixel"):
+                page.render(None, 300)
+
+
+class TestRenderSize:
+    def test_a_region_too_large_for_the_dpi_is_rendered_coarser(self, monkeypatch):
+        """An A0 poster at 300 DPI would need 139 million pixels."""
+        monkeypatch.setattr(pdf_backend_pdfium, "MAX_RENDER_PIXELS", 1_000_000)
+        poster = PageSpec(box(100, 100, 2000, 3000), width=2384, height=3370)
+        with only_page(poster) as page:
+            img = page.render(None, 300)
+            crop = page.render(Rect(0, 0, 2384, 1685), 300)
+        assert 900_000 < img.width * img.height <= 1_010_000
+        assert img.width / img.height == pytest.approx(2384 / 3370, rel=0.01)
+        assert 900_000 < crop.width * crop.height <= 1_010_000
+
+    def test_an_ordinary_page_is_rendered_at_the_dpi_asked_for(self):
+        with only_page(UPRIGHT) as page:
+            width, height = page.render(None, 300).size
+        # 8.5 x 11 in; the height may round up by a pixel.
+        assert width == 2550 and height in (3300, 3301)
+
+
+class TestMisuse:
     def test_a_page_kept_past_its_turn_fails_loudly(self):
         with open_pdf(build_pdf([UPRIGHT, UPRIGHT])) as doc:
             pages = list(doc)
             with pytest.raises(RuntimeError, match="used after it was closed"):
                 pages[0].text_blocks()
+
+    def test_a_page_kept_past_its_document_fails_loudly(self):
+        doc = open_pdf(build_pdf([UPRIGHT]))
+        pages = iter(doc)
+        page = next(pages)
+        doc.close()
+        for use in (page.text_blocks, page.image_rects, lambda: page.render(None, 72)):
+            with pytest.raises(RuntimeError, match="used after it was closed"):
+                use()
