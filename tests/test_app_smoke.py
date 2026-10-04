@@ -20,6 +20,7 @@ import pytest
 from PIL import Image
 
 import figure_images
+import process_memory
 
 APP = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 sys.path.insert(0, str(APP.parent))
@@ -253,3 +254,29 @@ def test_column_mixing_text_and_numbers_is_shown_as_text(
     assert arrow_complaints == []
     shown = [frame.value["timepoint"].tolist() for frame in at.dataframe]
     assert shown == [["Baseline", "6", "70.0"]] * 2  # Results tab, Export tab
+
+
+def test_heavy_work_leaves_a_memory_line_in_the_log(app, fake_anthropic, monkeypatch):
+    """The Cloud log of the outage had no memory figure in it at all."""
+    del fake_anthropic
+    lines: list[str] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            lines.append(record.getMessage())
+
+    handler = Collect()
+    monkeypatch.setattr(process_memory, "resident_mb", lambda: 500.0)
+    process_memory.LOG.addHandler(handler)
+    try:
+        at = upload(app().run(), "plot.png", png_file(40, 30))
+        at.selectbox[0].set_value("Haiku 4.5").run()  # a rerun: nothing heavy
+        at = extract_all(at)
+    finally:
+        process_memory.LOG.removeHandler(handler)
+    assert not at.exception
+    assert [line.split(":")[0] for line in lines] == [
+        "memory after reading 1 upload(s)",
+        "memory after extracting 1 figure(s)",
+    ]
+    assert all("all sessions hold" in line for line in lines)

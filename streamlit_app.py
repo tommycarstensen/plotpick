@@ -26,7 +26,13 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from figure_images import Figure, image_to_base64, pdf_to_figures, sync_uploads
+from figure_images import (
+    Figure,
+    held_summary,
+    image_to_base64,
+    pdf_to_figures,
+    sync_uploads,
+)
 from models import (
     DEFAULT_MODEL,
     MODEL_LABELS,
@@ -41,6 +47,7 @@ from models import (
     shared_key_from_environment,
 )
 from pmc import download_pmc_pdf
+from process_memory import log_memory
 
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -457,6 +464,7 @@ with st.sidebar:
                             f"\u26a0\ufe0f  {pmcid} -- PDF downloaded but no figures "
                             "detected"
                         )
+            log_memory(f"fetching {len(raw_ids)} PubMed ID(s)", held_summary())
 
     st.session_state.all_images = upload_figures + [
         figure
@@ -593,6 +601,7 @@ if images_to_extract:
             msg += f"  {n_err} failed."
         status.update(label=msg, state="complete", expanded=False)
 
+    log_memory(f"extracting {total} figure(s)", held_summary())
     st.session_state.results = results
     # Show the Results tab: the tabs below read their selection from this key.
     st.session_state.active_tab = TAB_RESULTS

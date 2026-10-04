@@ -22,6 +22,7 @@ compresses better as PNG than the same page scaled down (5.5 MB against
 
 import base64
 import io
+import weakref
 import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ import pymupdf
 from PIL import Image
 
 from pdf_figures import find_figures_on_page
+from process_memory import log_memory, return_freed_memory
 
 MAX_API_WIDTH = 2000  # Max width for API images (balance quality vs tokens)
 
@@ -45,13 +47,29 @@ IMAGE_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Figure:
     """One figure, at the two sizes the app needs."""
 
     label: str
     png: bytes  # the full render; image_to_base64() cuts it down for the model
     preview: bytes  # what the page shows
+
+    def __post_init__(self) -> None:
+        _LIVE.add(self)
+
+
+# Every figure still held by any session, for held_summary().
+_LIVE: "weakref.WeakSet[Figure]" = weakref.WeakSet()
+
+
+def held_summary() -> str:
+    """How many figures all sessions hold between them, and their size."""
+    figures = list(_LIVE)
+    size = sum(
+        len(f.png) + (0 if f.preview is f.png else len(f.preview)) for f in figures
+    )
+    return f"all sessions hold {len(figures)} figure(s), {size / 1e6:.0f} MB"
 
 
 class Upload(Protocol):
@@ -123,6 +141,7 @@ def pdf_to_figures(data: bytes, name: str) -> list[Figure]:
                 label = f"{name} p.{page_idx + 1}"
                 results.append(make_figure(label, _pix_to_image(pix)))
 
+    return_freed_memory()
     return results
 
 
@@ -170,7 +189,9 @@ def sync_uploads(
     for file_id in list(done):
         if file_id not in current:
             del done[file_id]
-    for upload in uploads:
-        if upload.file_id not in done:
-            done[upload.file_id] = file_to_figures(upload.name, upload.read())
+    new = [upload for upload in uploads if upload.file_id not in done]
+    for upload in new:
+        done[upload.file_id] = file_to_figures(upload.name, upload.read())
+    if new:
+        log_memory(f"reading {len(new)} upload(s)", held_summary())
     return [figure for upload in uploads for figure in done[upload.file_id]]
