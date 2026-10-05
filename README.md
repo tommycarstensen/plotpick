@@ -15,7 +15,7 @@ as tables and can be exported in multiple formats.
 - **Batch processing** -- upload multiple files at once
 - **Structured extraction** -- reads boxplots, bar charts, and line plots
   with biomarker, group, timepoint, and summary statistics
-- **Export formats** -- Markdown, Excel, CSV, JSON
+- **Export formats** -- Markdown, Excel, CSV, LaTeX, JSON, R script
 
 ## Architecture
 
@@ -68,13 +68,13 @@ flowchart TD
 
 Pick the model in the sidebar. Sonnet and Haiku run on the key the app is configured with; Opus 5.5 runs only on a key the visitor pastes in, which appears as a key box when Opus is selected.
 
-| Model | Model ID | Key | ChartX mean recall |
-|-------|----------|-----|--------------------|
-| Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not yet benchmarked |
-| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.5% |
+| Model | Model ID | Key | ChartX numeric F1 |
+|-------|----------|-----|-------------------|
+| Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not benchmarked |
+| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.6% |
 | Opus 5.5 | `claude-opus-5-5` | your own key only | not benchmarked |
 
-Recall is the mean over 299 paired figures from the ChartX validation split. That benchmark was run on the previous Sonnet, 4.6, which reached 92.2% and beat Haiku 4.5 by 3.7 points (95% CI [2.7, 4.8]), a gap that held across all six chart types. Sonnet 5.5 replaces it as the default at a lower per-token price; Haiku 4.5 is the cheaper and faster option.
+Numeric F1 is the F1 between the numbers a model extracts and the numbers in the ground truth, matched within 5%, on six chart types of the ChartX validation split (synthetic charts, 50 per type). That benchmark was run on the previous Sonnet, 4.6, which scored 92.2% and led Haiku 4.5 by 3.8 points on the 299 figures both models have (paired 95% interval [2.8, 4.9]). Sonnet 5.5 replaces it as the default at a lower per-token price and has not been benchmarked; Haiku 4.5 is the cheaper and faster option. See [Benchmarks](#benchmarks) for what these numbers do not cover.
 
 ## Troubleshooting
 
@@ -88,48 +88,18 @@ available, and the sidebar says which of these is missing. Check, in order:
 
 Hovering a disabled button shows the specific reason.
 
-## Validation dataset
+## Benchmarks
 
-The `validation/` folder contains scripts to build a ground-truth dataset
-for benchmarking PlotPick against structured table data from the same papers.
+The benchmark behind the paper lives in its own repository, [plotpick-validation](https://github.com/tommycarstensen/plotpick-validation): the runners, the per-item results and the scripts that regenerate every table and figure. Nothing in this repository runs it.
 
-1. **Find candidates** -- query PMC for open-access articles that
-   cross-reference a table and a figure presenting the same data:
+The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `assets/chartx_heatmap.png`) are the paper's Figures 1 and 2, written by `benchmarks/plot_chartx_validation.py --out-dir <this repo>/assets` in that repository.
 
-   ```
-   python validation/find_validation_papers.py
-   ```
+What the benchmark does and does not show:
 
-2. **Download PDFs + extract tables** -- fetch the PDF and parse structured
-   table data from the PMC XML (ground truth):
-
-   ```
-   python validation/download_ground_truth.py [--limit N]
-   ```
-
-3. **Match table-figure pairs** -- identify which Table N corresponds to
-   Figure M, extract the figure image, and filter for numeric tables:
-
-   ```
-   python validation/match_pairs.py [--limit N]
-   ```
-
-4. **Run benchmark** -- send each figure through Claude's vision API and
-   compare extracted values against ground-truth tables:
-
-   ```
-   python validation/run_benchmark.py [--model sonnet|haiku] [--limit N]
-   python validation/run_benchmark.py --report   # regenerate report only
-   ```
-
-Output:
-- `validation/candidates.csv` -- candidate paper metadata
-- `validation/pdfs/` -- downloaded PDFs
-- `validation/tables/` -- structured table data (JSON, one file per paper)
-- `validation/pairs.json` -- matched table-figure pairs (199 pairs)
-- `validation/figures/` -- extracted figure PNGs
-- `validation/results/` -- per-pair extraction results
-- `validation/benchmark_report.md` -- aggregate accuracy metrics
+- It scores nine vision-language models and DePlot on six chart types of the ChartX validation split (synthetic charts) and six of the models on a PlotQA subset.
+- It uses a two-sentence prompt, not this app's structured prompt, and it scores the numbers only, not the group, timepoint, error-bar or group-size fields the app returns.
+- The app's default models, Sonnet 5.5 and Opus 5.5, were not benchmarked.
+- Accuracy on real biomedical figures has not been established. Check every extracted value against its figure.
 
 ## Requirements
 

@@ -39,23 +39,24 @@ class Model:
 
 # Ordered -- the first entry is the default selection.
 #
-# Sonnet leads.  The ChartX validation split (299 paired figures) was run on
-# the previous Sonnet, 4.6, which reached 92.2% mean recall against Haiku
-# 4.5's 88.5% -- a +3.7 point gap, 95% bootstrap CI [+2.7, +4.8], holding
-# across all six chart types (validation/results/final_val/).  Sonnet 5.5
-# replaces it at a lower per-token price and has not been benchmarked yet.
+# Sonnet leads.  The ChartX validation split was run on the previous Sonnet,
+# 4.6, which reached 92.2% numeric F1 against Haiku 4.5's 88.6% -- a +3.8
+# point gap on the 299 figures both have, paired 95% bootstrap interval
+# [+2.8, +4.9] (results/final_val/ in the plotpick-validation repository).
+# Sonnet 5.5 replaces it at a lower per-token price and has not been
+# benchmarked.
 MODELS: tuple[Model, ...] = (
     Model(
         short_name="Sonnet 5.5",
         model_id="claude-sonnet-5-5",
         needs_own_key=False,
-        blurb="Latest Sonnet. Its predecessor reached 92.2% mean recall on ChartX.",
+        blurb="Latest Sonnet. Not benchmarked; Sonnet 4.6 scored 92.2% on ChartX.",
     ),
     Model(
         short_name="Haiku 4.5",
         model_id="claude-haiku-4-5-20251001",
         needs_own_key=False,
-        blurb="Faster and cheaper -- 88.5% mean recall on ChartX.",
+        blurb="Faster and cheaper -- 88.6% numeric F1 on ChartX.",
     ),
     Model(
         short_name="Opus 5.5",

@@ -529,19 +529,30 @@ with st.sidebar:
         st.image(
             str(Path(__file__).parent / "assets" / "chartx_by_type.png"),
             caption=(
-                "Chart-to-table extraction accuracy by plot type (ChartX benchmark)"
+                "Numeric F1 by chart type, ChartX validation split "
+                "(synthetic charts, 50 per type), with 95% intervals"
             ),
         )
         st.image(
-            str(Path(__file__).parent / "assets" / "heatmap_model_type.png"),
-            caption="Recall (%) by model and chart type",
+            str(Path(__file__).parent / "assets" / "chartx_heatmap.png"),
+            caption=(
+                "Numeric F1 (%) by model and chart type. Orange outlines mark "
+                "the four cells where a model scores below DePlot"
+            ),
         )
         st.caption(
-            "Recall scores on life-science figure types from ChartX. "
-            "All eight VLMs from four providers outperform DePlot, "
-            "a dedicated chart-to-table model. "
-            "Labeled figures (with text annotations) are consistently "
-            "easier for all models."
+            "Numeric F1 is the F1 between the numbers a model extracts and "
+            "the numbers in the ground truth, matched within 5%; it does not "
+            "check that a value sits in the right group. Across six chart "
+            "types all nine vision-language models tested score above "
+            "DePlot, a dedicated chart-to-table model, though the two "
+            "weakest trail it on some chart types. Charts that print their "
+            "values as data labels are easier for every system. "
+            "These are synthetic charts read with a two-sentence prompt: "
+            "the benchmark did not test this app's own prompt, did not "
+            "include its default models (Sonnet 5.5, Opus 5.5), and says "
+            "nothing yet about real biomedical figures. Check every "
+            "extracted value against its figure."
         )
 
 
