@@ -556,9 +556,11 @@ with st.sidebar:
             "chart types all nine vision-language models tested score above "
             "DePlot, a dedicated chart-to-table model, mostly because of "
             "box plots; the two weakest trail it on some chart types. On a "
-            "second benchmark, a PlotQA subset whose charts print no "
-            "values, DePlot scores 87.0%: two of six models match or "
-            "slightly exceed it and four fall below it, Haiku 4.5 at 70.2%. "
+            "second benchmark, a subset of PlotQA that is mostly horizontal "
+            "bar charts, scored leniently on the best-matching series of "
+            "each reply, DePlot scores 87.0%: two of six models are level "
+            "with it or slightly above it and four fall below it, Haiku 4.5 "
+            "at 70.2%. "
             "These are synthetic charts read with a two-sentence prompt: "
             "the benchmark did not test this app's own prompt, did not "
             "include Sonnet 5.5 or Opus 5.5, and says nothing yet about "
@@ -665,22 +667,29 @@ with tab_results:
     if not st.session_state.results:
         st.info("Click 'Extract all' in the sidebar to run the AI extraction.")
     else:
-        with st.expander("How is the confidence score calculated?"):
+        st.caption(
+            "Every value below is a model's reading of the figure. Check each "
+            "one against its figure before you use it."
+        )
+        with st.expander("What is the confidence score?"):
             st.markdown(
-                "The confidence score (0--100) is the AI model's self-assessed "
-                "estimate of how precisely it could read numeric values from the "
-                "figure. It is **not** a validated accuracy metric.\n\n"
-                "| Range | Meaning |\n"
+                "The confidence score (0--100) is the number the AI model "
+                "itself reports for how precisely it thinks it read the "
+                "figure. It is **not** a probability and has not been checked "
+                "against true values, so it is not known whether it is higher "
+                "for figures that were read correctly.\n\n"
+                "The model was told to choose its number like this:\n\n"
+                "| Range | Instruction to the model |\n"
                 "|-------|---------|\n"
                 "| 95--100 | Crisp axes, clear ticks, values easy to read exactly |\n"
                 "| 80--94 | Good axes but some interpolation between ticks needed |\n"
                 "| 60--79 | Small figure, overlapping elements, or missing ticks |\n"
                 "| < 60 | Largely guessing |\n\n"
-                "**Tip:** Check every extracted value against the original "
-                "figure, whatever the score. Whether the score picks out the "
-                "figures that were read wrongly has not been tested.\n\n"
-                "Cells highlighted in amber are individual values the model "
-                "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
+                "Check every extracted value against the original figure, "
+                "whatever the score, and do not skip a value because it is "
+                "not highlighted. Cells highlighted in amber are values the "
+                "model itself flagged as uncertain (e.g. overlapping boxes, "
+                "blurry regions); the other cells are unverified too."
             )
         # Build a lookup from label -> PNG bytes for showing source figures
         _img_lookup: dict[str, bytes] = {
@@ -722,7 +731,7 @@ with tab_results:
                     f'<span><b>Type:</b> {fig_type}</span>'
                     f'<span><b>Y-axis:</b> {y_ax}</span>'
                     f'<span><b>Scale:</b> {scale}</span>'
-                    f'<span><b>Confidence:</b> {conf}%</span>'
+                    f'<span><b>Confidence (model\'s own):</b> {conf}/100</span>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

@@ -27,7 +27,7 @@ flowchart TD
     C --> D["☑️ Select figures to extract"]
     D --> E["🔑 Send to Claude Vision API"]
     E --> F{"🤖 AI reads the figure"}
-    F -->|✅ Success| G["📊 Structured data table<br/>with confidence score"]
+    F -->|✅ Success| G["📊 Structured data table<br/>with self-reported confidence"]
     F -->|❌ Error| H["⚠️ Flag & continue"]
     G --> I["📤 Export"]
     I --> J["📗 Excel"]
@@ -74,7 +74,7 @@ Pick the model in the sidebar. Sonnet and Haiku run on the key the app is config
 | Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.7% | 70.2% |
 | Opus 5.5 | `claude-opus-5-5` | your own key only | not benchmarked | not benchmarked |
 
-Numeric F1 is the F1 between the numbers a model extracts and the numbers in the ground truth, matched within 5%. The ChartX column is six chart types of the ChartX validation split (synthetic charts, 50 per type); the PlotQA column is a 529-chart subset of PlotQA whose charts print no values, so every number has to be read from an axis, scored on the best-matching series of the reply. Both were run on the previous Sonnet, 4.6, which scored 92.2% and 89.0%. Sonnet 5.5 replaces it as the default at a lower per-token price and has not been benchmarked; Haiku 4.5 is the cheaper and faster option, and the PlotQA column shows what that costs on charts without printed values. See [Benchmarks](#benchmarks) for what these numbers do not cover.
+Numeric F1 is the F1 between the numbers a model extracts and the numbers in the ground truth, matched within 5%. The ChartX column is six chart types of the ChartX validation split (synthetic charts, 50 per type). The PlotQA column is a 529-chart subset of PlotQA's test split, mostly horizontal bar charts, scored on the best-matching series of the reply, which is a more lenient score. Both were run on the previous Sonnet, 4.6, which scored 92.2% and 89.0%. Sonnet 5.5 replaces it as the default at a lower per-token price and has not been benchmarked; Haiku 4.5 is the cheaper and faster option, and it scored well below Sonnet 4.6 on the PlotQA subset. See [Benchmarks](#benchmarks) for what these numbers do not cover.
 
 ## Troubleshooting
 
@@ -97,10 +97,11 @@ The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `ass
 What the benchmark does and does not show:
 
 - It scores nine vision-language models and DePlot, a dedicated chart-to-table model, on six chart types of the ChartX validation split (synthetic charts) and six of the models on a PlotQA subset.
-- On ChartX all nine models score above DePlot in aggregate (79.1-96.0% against 74.3%), mostly because of box plots, where DePlot returns one value per box. On the other five chart types the two weakest models do not lead it.
-- On the PlotQA subset DePlot scores 87.0%. Two of the six models match or slightly exceed it (89.2% and 89.0%) and four fall below it (83.2% down to 56.7%). General-purpose models are not uniformly better than a dedicated one.
+- On ChartX all nine models score above DePlot in aggregate (79.1-96.0% against 74.3%), mostly because of box plots, where DePlot returns one value per box. On the other five chart types the four strongest models still lead DePlot and the two weakest do not.
+- On the PlotQA subset (529 charts from the start of its test split, 427 of them horizontal bar charts, scored leniently on the best-matching series of each reply) DePlot scores 87.0%. Two of the six models are level with it or slightly above it (89.2% and 89.0%) and four fall below it (83.2% down to 56.7%). General-purpose models are not uniformly better than DePlot, which was trained on PlotQA.
 - It uses a two-sentence prompt, not this app's structured prompt, and it scores the numbers only, not the group, timepoint, error-bar or group-size fields the app returns.
 - The app's default model, Sonnet 5.5, and Opus 5.5 were not benchmarked.
+- The confidence score and the amber uncertainty flags are the model's own, and whether they pick out the values that are wrong has not been tested.
 - An earlier version of the paper and of this README reported higher PlotQA scores and a larger lead over DePlot. Those came from scoring errors, which the paper's section "Changes from version 1" describes.
 - Accuracy on real biomedical figures has not been established. Check every extracted value against its figure.
 

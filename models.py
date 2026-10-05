@@ -41,24 +41,27 @@ class Model:
 #
 # Sonnet leads.  Sonnet 5.5 has not been benchmarked.  The previous Sonnet,
 # 4.6, scored 92.2% numeric F1 on the ChartX validation split against Haiku
-# 4.5's 88.7%, and 89.0% against 70.2% on the PlotQA subset, whose charts
-# print no values (results/ in the plotpick-validation repository).  Sonnet
-# 5.5 replaces 4.6 at a lower per-token price.
+# 4.5's 88.7%, and 89.0% against 70.2% on the PlotQA subset (results/ in the
+# plotpick-validation repository).  Both benchmarks are synthetic charts.
+# Sonnet 5.5 replaces 4.6 at a lower per-token price.
 MODELS: tuple[Model, ...] = (
     Model(
         short_name="Sonnet 5.5",
         model_id="claude-sonnet-5-5",
         needs_own_key=False,
         blurb=(
-            "Latest Sonnet. Not benchmarked; Sonnet 4.6 scored 92.2% on ChartX "
-            "and 89.0% on PlotQA."
+            "Latest Sonnet. Not benchmarked; on synthetic charts Sonnet 4.6 "
+            "scored 92.2% (ChartX) and 89.0% (PlotQA)."
         ),
     ),
     Model(
         short_name="Haiku 4.5",
         model_id="claude-haiku-4-5-20251001",
         needs_own_key=False,
-        blurb="Faster and cheaper. 88.7% numeric F1 on ChartX, 70.2% on PlotQA.",
+        blurb=(
+            "Faster and cheaper. On synthetic charts it scored 88.7% numeric "
+            "F1 (ChartX) and 70.2% (PlotQA)."
+        ),
     ),
     Model(
         short_name="Opus 5.5",
