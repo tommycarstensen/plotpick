@@ -275,6 +275,20 @@ def test_column_mixing_text_and_numbers_is_shown_as_text(
     assert shown == [["Baseline", "6", "70.0"]] * 2  # Results tab, Export tab
 
 
+def test_uncertain_flags_outlive_the_first_display(app, fake_anthropic):
+    """The Results tab popped them from the stored rows, so a rerun lost them."""
+    fake_anthropic.answer["data"] = [
+        {"group": "A", "mean": 1.5, "uncertain": ["mean"]},
+    ]
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    at = at.run()  # any interaction runs the script again
+    assert not at.exception
+    (result,) = at.session_state.results.values()
+    assert result["data"] == fake_anthropic.answer["data"]
+    shown = [list(frame.value.columns) for frame in at.dataframe]
+    assert shown == [["group", "mean"], ["source", "group", "mean"]]
+
+
 def test_heavy_work_leaves_a_memory_line_in_the_log(app, fake_anthropic, monkeypatch):
     """The Cloud log of the outage had no memory figure in it at all."""
     del fake_anthropic

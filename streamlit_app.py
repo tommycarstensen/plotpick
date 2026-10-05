@@ -321,6 +321,15 @@ def _dataframe_to_r(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def _values_only(row: dict[str, Any]) -> dict[str, Any]:
+    """An extracted row without the model's list of uncertain columns.
+
+    The list is shown as highlighting and kept in the JSON export; in a table
+    it would be a column of lists.
+    """
+    return {key: value for key, value in row.items() if key != "uncertain"}
+
+
 def _one_type_per_column(df: pd.DataFrame) -> pd.DataFrame:
     """Return the table as it is shown: a column mixing text and numbers as text.
 
@@ -720,11 +729,13 @@ with tab_results:
                 # Data table with uncertain-value highlighting
                 data_rows = result.get("data", [])
                 if data_rows:
-                    # Extract per-row uncertain lists before building the DF
+                    # Read the flags without removing them: this script runs
+                    # again on every interaction, and rows stripped here would
+                    # lose their highlighting on the next one.
                     uncertain_lists: list[list[str]] = [
-                        row.pop("uncertain", []) or [] for row in data_rows
+                        row.get("uncertain") or [] for row in data_rows
                     ]
-                    df = pd.DataFrame(data_rows)
+                    df = pd.DataFrame([_values_only(row) for row in data_rows])
 
                     # Build a mask of cells that were flagged as uncertain
                     uncertain_mask = pd.DataFrame(
@@ -765,7 +776,7 @@ with tab_export:
         all_rows: list[dict[str, Any]] = []
         for label, result in st.session_state.results.items():
             for row in result.get("data", []):
-                all_rows.append({"source": label, **row})
+                all_rows.append({"source": label, **_values_only(row)})
 
         if not all_rows:
             st.warning("No data rows found across all extractions.")
