@@ -546,22 +546,24 @@ with st.sidebar:
             str(Path(__file__).parent / "assets" / "chartx_heatmap.png"),
             caption=(
                 "Numeric F1 (%) by model and chart type. Orange outlines mark "
-                "the four cells where a model scores below DePlot"
+                "the six cells where a model scores below DePlot"
             ),
         )
         st.caption(
             "Numeric F1 is the F1 between the numbers a model extracts and "
             "the numbers in the ground truth, matched within 5%; it does not "
-            "check that a value sits in the right group. Across six chart "
-            "types all nine vision-language models tested score above "
-            "DePlot, a dedicated chart-to-table model, though the two "
-            "weakest trail it on some chart types. Charts that print their "
-            "values as data labels are easier for every system. "
+            "check that a value sits in the right group. Across six ChartX "
+            "chart types all nine vision-language models tested score above "
+            "DePlot, a dedicated chart-to-table model, mostly because of "
+            "box plots; the two weakest trail it on some chart types. On a "
+            "second benchmark, a PlotQA subset whose charts print no "
+            "values, DePlot scores 87.0%: two of six models match or "
+            "slightly exceed it and four fall below it, Haiku 4.5 at 70.2%. "
             "These are synthetic charts read with a two-sentence prompt: "
             "the benchmark did not test this app's own prompt, did not "
-            "include its default models (Sonnet 5.5, Opus 5.5), and says "
-            "nothing yet about real biomedical figures. Check every "
-            "extracted value against its figure."
+            "include Sonnet 5.5 or Opus 5.5, and says nothing yet about "
+            "real biomedical figures. Check every extracted value against "
+            "its figure."
         )
 
 
@@ -673,9 +675,10 @@ with tab_results:
                 "| 95--100 | Crisp axes, clear ticks, values easy to read exactly |\n"
                 "| 80--94 | Good axes but some interpolation between ticks needed |\n"
                 "| 60--79 | Small figure, overlapping elements, or missing ticks |\n"
-                "| < 60 | Largely guessing -- consider manual verification |\n\n"
-                "**Tip:** Always cross-check extracted values against the original "
-                "figure, especially when confidence is below 80.\n\n"
+                "| < 60 | Largely guessing |\n\n"
+                "**Tip:** Check every extracted value against the original "
+                "figure, whatever the score. Whether the score picks out the "
+                "figures that were read wrongly has not been tested.\n\n"
                 "Cells highlighted in amber are individual values the model "
                 "flagged as uncertain (e.g. overlapping boxes, blurry regions)."
             )

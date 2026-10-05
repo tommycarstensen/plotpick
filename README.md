@@ -68,13 +68,13 @@ flowchart TD
 
 Pick the model in the sidebar. Sonnet and Haiku run on the key the app is configured with; Opus 5.5 runs only on a key the visitor pastes in, which appears as a key box when Opus is selected.
 
-| Model | Model ID | Key | ChartX numeric F1 |
-|-------|----------|-----|-------------------|
-| Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not benchmarked |
-| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.6% |
-| Opus 5.5 | `claude-opus-5-5` | your own key only | not benchmarked |
+| Model | Model ID | Key | ChartX numeric F1 | PlotQA numeric F1 |
+|-------|----------|-----|-------------------|-------------------|
+| Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not benchmarked | not benchmarked |
+| Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.7% | 70.2% |
+| Opus 5.5 | `claude-opus-5-5` | your own key only | not benchmarked | not benchmarked |
 
-Numeric F1 is the F1 between the numbers a model extracts and the numbers in the ground truth, matched within 5%, on six chart types of the ChartX validation split (synthetic charts, 50 per type). That benchmark was run on the previous Sonnet, 4.6, which scored 92.2% and led Haiku 4.5 by 3.8 points on the 299 figures both models have (paired 95% interval [2.8, 4.9]). Sonnet 5.5 replaces it as the default at a lower per-token price and has not been benchmarked; Haiku 4.5 is the cheaper and faster option. See [Benchmarks](#benchmarks) for what these numbers do not cover.
+Numeric F1 is the F1 between the numbers a model extracts and the numbers in the ground truth, matched within 5%. The ChartX column is six chart types of the ChartX validation split (synthetic charts, 50 per type); the PlotQA column is a 529-chart subset of PlotQA whose charts print no values, so every number has to be read from an axis, scored on the best-matching series of the reply. Both were run on the previous Sonnet, 4.6, which scored 92.2% and 89.0%. Sonnet 5.5 replaces it as the default at a lower per-token price and has not been benchmarked; Haiku 4.5 is the cheaper and faster option, and the PlotQA column shows what that costs on charts without printed values. See [Benchmarks](#benchmarks) for what these numbers do not cover.
 
 ## Troubleshooting
 
@@ -96,9 +96,12 @@ The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `ass
 
 What the benchmark does and does not show:
 
-- It scores nine vision-language models and DePlot on six chart types of the ChartX validation split (synthetic charts) and six of the models on a PlotQA subset.
+- It scores nine vision-language models and DePlot, a dedicated chart-to-table model, on six chart types of the ChartX validation split (synthetic charts) and six of the models on a PlotQA subset.
+- On ChartX all nine models score above DePlot in aggregate (79.1-96.0% against 74.3%), mostly because of box plots, where DePlot returns one value per box. On the other five chart types the two weakest models do not lead it.
+- On the PlotQA subset DePlot scores 87.0%. Two of the six models match or slightly exceed it (89.2% and 89.0%) and four fall below it (83.2% down to 56.7%). General-purpose models are not uniformly better than a dedicated one.
 - It uses a two-sentence prompt, not this app's structured prompt, and it scores the numbers only, not the group, timepoint, error-bar or group-size fields the app returns.
-- The app's default models, Sonnet 5.5 and Opus 5.5, were not benchmarked.
+- The app's default model, Sonnet 5.5, and Opus 5.5 were not benchmarked.
+- An earlier version of the paper and of this README reported higher PlotQA scores and a larger lead over DePlot. Those came from scoring errors, which the paper's section "Changes from version 1" describes.
 - Accuracy on real biomedical figures has not been established. Check every extracted value against its figure.
 
 ## Requirements
