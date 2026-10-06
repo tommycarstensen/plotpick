@@ -13,7 +13,6 @@ environment variable or in .streamlit/secrets.toml:
     ANTHROPIC_API_KEY = "sk-ant-..."
 """
 
-import io
 import json
 import re
 import xml.etree.ElementTree as ET
@@ -26,6 +25,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from exports import dataframe_to_excel, dataframe_to_latex, dataframe_to_r
 from figure_images import (
     Figure,
     held_summary,
@@ -292,33 +292,6 @@ def _extract_from_image(
             exc.doc,
             exc.pos,
         ) from exc
-
-
-def _dataframe_to_r(df: pd.DataFrame) -> str:
-    """Convert a pandas DataFrame to an R data.frame() assignment."""
-    lines = [
-        "# PlotPick output -- source directly in R",
-        f"# Generated {datetime.now():%Y-%m-%d %H:%M}",
-        "",
-        "dat <- data.frame(",
-    ]
-    for col_idx, col in enumerate(df.columns):
-        vals = df[col].tolist()
-        if df[col].dtype == object:
-            escaped = [
-                "NA" if pd.isna(v) else f'"{v!s}"' for v in vals
-            ]
-            vec = f"  {col} = c({', '.join(escaped)})"
-        else:
-            formatted = [
-                "NA" if pd.isna(v) else str(v) for v in vals
-            ]
-            vec = f"  {col} = c({', '.join(formatted)})"
-        vec += "," if col_idx < len(df.columns) - 1 else ""
-        lines.append(vec)
-    lines.append("  stringsAsFactors = FALSE")
-    lines.append(")")
-    return "\n".join(lines)
 
 
 def _values_only(row: dict[str, Any]) -> dict[str, Any]:
@@ -830,19 +803,9 @@ with tab_export:
                 )
 
             if want_xlsx:
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-                    combined.to_excel(
-                        writer, index=False, sheet_name="All"
-                    )
-                    # One sheet per source
-                    for label in combined["source"].unique():
-                        sheet = label[:31]  # Excel sheet name limit
-                        subset = combined[combined["source"] == label]
-                        subset.to_excel(writer, index=False, sheet_name=sheet)
                 st.download_button(
                     "\U0001f4e5 Download Excel",
-                    data=buf.getvalue(),
+                    data=dataframe_to_excel(combined),
                     file_name=f"plotpick_{timestamp}.xlsx",
                     mime=(
                         "application/vnd.openxmlformats-"
@@ -860,7 +823,7 @@ with tab_export:
                 )
 
             if want_latex:
-                latex_text = combined.to_latex(index=False)
+                latex_text = dataframe_to_latex(combined)
                 st.code(latex_text, language="latex")
                 st.download_button(
                     "\U0001f4e5 Download LaTeX",
@@ -883,7 +846,7 @@ with tab_export:
                 )
 
             if want_r:
-                r_script = _dataframe_to_r(combined)
+                r_script = dataframe_to_r(combined)
                 st.code(r_script, language="r")
                 st.download_button(
                     "\U0001f4e5 Download R script",
