@@ -130,7 +130,7 @@ Questions and bug reports go to the [issue tracker](https://github.com/tommycars
 
 ## Citation
 
-Please cite the companion preprint: Carstensen, T. PlotPick: AI-powered batch extraction of numerical data from scientific figures. arXiv:2605.06021, https://doi.org/10.48550/arXiv.2605.06021.
+Please cite the companion preprint: Carstensen, T. PlotPick: AI-powered batch extraction of numerical data from scientific figures. arXiv:2605.06021, https://doi.org/10.48550/arXiv.2605.06021. [CITATION.cff](CITATION.cff) has the same in machine-readable form, and [CHANGELOG.md](CHANGELOG.md) lists the changes between versions.
 
 ## License
 

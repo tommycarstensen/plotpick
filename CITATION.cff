@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use PlotPick, please cite the preprint given under preferred-citation."
+title: "PlotPick"
+type: software
+license: MIT
+repository-code: "https://github.com/tommycarstensen/plotpick"
+url: "https://plotpick.streamlit.app/"
+abstract: "A Streamlit application that finds the figures and tables in scientific PDFs and asks a vision-language model to transcribe each into a table, for systematic reviews and meta-analyses."
+keywords:
+  - systematic review
+  - meta-analysis
+  - data extraction
+  - vision-language models
+  - chart digitisation
+authors:
+  - family-names: Carstensen
+    given-names: Tommy
+    orcid: "https://orcid.org/0000-0002-3672-9931"
+    affiliation: "Copenhagen Research Centre for Biological and Precision Psychiatry, Mental Health Centre Copenhagen, Copenhagen University Hospital, Copenhagen, Denmark"
+  - family-names: Benros
+    given-names: Michael Eriksen
+    orcid: "https://orcid.org/0000-0003-4939-9465"
+    affiliation: "Copenhagen Research Centre for Biological and Precision Psychiatry, Mental Health Centre Copenhagen, Copenhagen University Hospital, Copenhagen, Denmark"
+preferred-citation:
+  type: article
+  title: "PlotPick: AI-powered batch extraction of numerical data from scientific figures"
+  authors:
+    - family-names: Carstensen
+      given-names: Tommy
+      orcid: "https://orcid.org/0000-0002-3672-9931"
+  year: 2026
+  journal: "arXiv"
+  identifiers:
+    - type: doi
+      value: "10.48550/arXiv.2605.06021"
+  url: "https://arxiv.org/abs/2605.06021"
