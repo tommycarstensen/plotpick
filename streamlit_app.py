@@ -426,6 +426,7 @@ if images_to_extract:
             # Which model read the figure, and when (UTC), travel with the
             # result into the JSON export and every tabular export.
             provenance = {
+                "image_sha256": figure.digest,
                 "model": model,
                 "extracted_at": datetime.now(UTC).isoformat(timespec="seconds"),
             }
@@ -502,9 +503,10 @@ with tab_results:
                 "model itself flagged as uncertain (e.g. overlapping boxes, "
                 "blurry regions); the other cells are unverified too."
             )
-        # Build a lookup from label -> PNG bytes for showing source figures
+        # The image a result was read from, found by its content: by label,
+        # a result could be shown beside another file of the same name.
         _img_lookup: dict[str, bytes] = {
-            figure.label: figure.preview for figure in st.session_state.all_images
+            figure.digest: figure.preview for figure in st.session_state.all_images
         }
 
         for label, result in st.session_state.results.items():
@@ -527,9 +529,13 @@ with tab_results:
             col_img, col_data = st.columns([2, 3])
 
             with col_img:
-                src_img = _img_lookup.get(label)
+                src_img = _img_lookup.get(result.get("image_sha256", ""))
                 if src_img is not None:
                     st.image(src_img, caption=label, width="stretch")
+                else:
+                    st.caption(
+                        "The image this was read from is no longer loaded."
+                    )
 
             with col_data:
                 # Metadata as a compact inline summary

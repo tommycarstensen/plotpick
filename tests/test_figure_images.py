@@ -127,6 +127,7 @@ class TestDistinctLabels:
             "fig1.png", "fig1.png (2)", "b.pdf p.1 Fig_1", "fig1.png (3)",
         ]
         assert distinct[1].png is figures[1].png
+        assert distinct[1].digest == figures[1].digest
 
     def test_a_number_already_in_use_is_skipped(self):
         figures = self.figures("fig1.png", "fig1.png", "fig1.png (2)")

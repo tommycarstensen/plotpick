@@ -246,6 +246,32 @@ def test_two_uploads_with_one_name_keep_two_results(app, fake_anthropic):
     assert sorted(at.session_state.results) == ["fig1.png", "fig1.png (2)"]
 
 
+def test_a_result_is_shown_only_beside_the_image_it_was_read_from(
+    app, fake_anthropic,
+):
+    """Results were matched to images by label: after the first of two
+    uploads named fig1.png was removed, the second took the label "fig1.png"
+    and was shown beside the first file's result."""
+    del fake_anthropic
+    at = app().run()
+    if not hasattr(at, "file_uploader"):
+        pytest.skip("this Streamlit's AppTest cannot simulate an upload")
+    first, second = png_file(60, 40), png_file(80, 50)
+    at = extract_all(at.file_uploader[0].set_value([
+        ("fig1.png", first, "image/png"),
+        ("fig1.png", second, "image/png"),
+    ]).run())
+    results = at.session_state.results
+    assert results["fig1.png"]["image_sha256"] != (
+        results["fig1.png (2)"]["image_sha256"]
+    )
+    at = at.file_uploader[0].set_value([("fig1.png", second, "image/png")]).run()
+    assert not at.exception
+    assert [c.value for c in at.caption if "no longer loaded" in c.value] == [
+        "The image this was read from is no longer loaded.",
+    ]
+
+
 def test_a_reply_of_the_wrong_shape_fails_only_its_figure(app, fake_anthropic):
     """A JSON array used to raise outside the handled errors and lose the
     whole batch, results already paid for included."""

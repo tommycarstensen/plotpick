@@ -27,11 +27,12 @@ over again on the next rerun.
 """
 
 import base64
+import hashlib
 import io
 import weakref
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from typing import Protocol
 
@@ -59,8 +60,14 @@ class Figure:
     label: str
     png: bytes  # the full render; image_to_base64() cuts it down for the model
     preview: bytes  # what the page shows
+    # Names the image itself, which a label does not: two uploads can share a
+    # file name, and a label can be given to another figure later.
+    digest: str = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "digest", hashlib.sha256(self.png).hexdigest()[:16],
+        )
         _LIVE.add(self)
 
 
