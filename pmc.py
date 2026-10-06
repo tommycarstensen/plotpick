@@ -15,6 +15,11 @@ import requests
 PMC_CLOUD_URL = "https://pmc-oa-opendata.s3.amazonaws.com/"
 _S3_NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
 
+# NCBI's ID Converter moved here from www.ncbi.nlm.nih.gov/pmc/utils/idconv/
+# in 2026; the old address redirects.  It takes at most 200 IDs a request.
+IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+_IDCONV_BATCH = 200
+
 
 def parse_pubmed_ids(text: str) -> list[str]:
     """Extract PubMed IDs or PMCIDs from free-text input.
@@ -48,6 +53,33 @@ def parse_pubmed_ids(text: str) -> list[str]:
             ids.append(token)
             continue
     return ids
+
+
+def pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
+    """Each PubMed ID's PMCID, or None when PubMed Central has no record of it.
+
+    Network and JSON-decode failures are raised (requests.RequestException,
+    ValueError) so that the caller can tell "no record" from "could not ask".
+    """
+    found: dict[str, str | None] = {}
+    for start in range(0, len(pmids), _IDCONV_BATCH):
+        r = requests.get(
+            IDCONV_URL,
+            params={
+                "ids": ",".join(pmids[start:start + _IDCONV_BATCH]),
+                "format": "json",
+                "tool": "plotpick",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        for record in r.json().get("records", []):
+            # "pmid" comes back as a number; "requested-id" echoes the ID as
+            # it was sent.  Matching the number against the strings sent
+            # found nothing, so every PMID was silently dropped.
+            asked = str(record.get("requested-id") or record.get("pmid") or "")
+            found[asked] = record.get("pmcid")
+    return {pmid: found.get(pmid) for pmid in pmids}
 
 
 def _versions(pmcid: str) -> list[int]:

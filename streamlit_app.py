@@ -47,7 +47,7 @@ from models import (
     resolve_api_key,
     shared_key_from_environment,
 )
-from pmc import download_pmc_pdf, parse_pubmed_ids
+from pmc import download_pmc_pdf, parse_pubmed_ids, pmids_to_pmcids
 from process_memory import log_memory
 
 if TYPE_CHECKING:
@@ -150,38 +150,16 @@ st.markdown(f"<style>{_CSS_PATH.read_text()}</style>", unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # Helpers -- PubMed / PMC
 # ---------------------------------------------------------------------------
-_NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-
-
 def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
-    """Convert PMIDs to PMCIDs via NCBI ID Converter API.
-
-    Returns {pmid: pmcid_or_None}.  PMCIDs are passed through unchanged.
-    """
-    result: dict[str, str | None] = {}
-    to_convert: list[str] = []
-    for pid in pmids:
-        if pid.upper().startswith("PMC"):
-            result[pid] = pid.upper()
-        else:
-            to_convert.append(pid)
-
+    """Each ID's PMCID, or None.  PMCIDs are passed through unchanged."""
+    result: dict[str, str | None] = {
+        pid: pid.upper() for pid in pmids if pid.upper().startswith("PMC")
+    }
+    to_convert = [pid for pid in pmids if pid not in result]
     if not to_convert:
         return result
-
     try:
-        r = requests.get(
-            "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/",
-            params={"ids": ",".join(to_convert), "format": "json"},
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
-        for rec in data.get("records", []):
-            pmid = rec.get("pmid", "")
-            pmcid = rec.get("pmcid")
-            if pmid in to_convert:
-                result[pmid] = pmcid  # None if no PMC record
+        result.update(pmids_to_pmcids(to_convert))
     except (requests.RequestException, ValueError) as exc:
         # Only network and JSON-decode failures are expected here.  Anything
         # else is a bug and must propagate rather than be reported to the user
@@ -190,7 +168,7 @@ def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
                    f"{', '.join(to_convert)}")
         for pid in to_convert:
             result.setdefault(pid, None)
-    return result
+    return {pid: result[pid] for pid in pmids}  # in the order they were entered
 
 
 def _download_pmc_pdf(pmcid: str) -> bytes | None:

@@ -29,6 +29,69 @@ def test_ignores_words_and_short_numbers():
     assert pmc.parse_pubmed_ids("   ") == []
 
 
+class FakeIdconv:
+    """The ID Converter's reply, as the service gave it on 6 October 2026."""
+
+    def __init__(self, records: list[dict], status_code: int = 200):
+        self.records = records
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code}")
+
+    def json(self) -> dict:
+        return {"status": "ok", "records": self.records}
+
+
+def test_pmids_are_matched_although_the_service_answers_numbers(monkeypatch):
+    """It sends "pmid" as a number; matching that against the strings sent
+    found nothing, so every PMID was dropped without a word."""
+    sent = []
+
+    def fake_get(url, params=None, timeout=None):
+        del timeout
+        sent.append((url, params))
+        return FakeIdconv([
+            {"doi": "10.3390/v16010008", "pmcid": "PMC10821221",
+             "pmid": 38275943, "requested-id": "38275943"},
+            {"pmid": 1, "requested-id": "1", "status": "error",
+             "errmsg": "Identifier not found in PMC"},
+        ])
+
+    monkeypatch.setattr(pmc.requests, "get", fake_get)
+    assert pmc.pmids_to_pmcids(["38275943", "1", "99999999"]) == {
+        "38275943": "PMC10821221", "1": None, "99999999": None,
+    }
+    ((url, params),) = sent
+    assert url == pmc.IDCONV_URL
+    assert params["ids"] == "38275943,1,99999999"
+    assert params["tool"] == "plotpick"
+
+
+def test_pmid_lookup_is_sent_in_batches_of_200(monkeypatch):
+    batches = []
+
+    def fake_get(url, params: dict[str, str], timeout=None):
+        del url, timeout
+        ids = params["ids"].split(",")
+        batches.append(len(ids))
+        return FakeIdconv([{"pmcid": f"PMC{i}", "requested-id": i} for i in ids])
+
+    monkeypatch.setattr(pmc.requests, "get", fake_get)
+    pmids = [str(10000 + i) for i in range(450)]
+    assert pmc.pmids_to_pmcids(pmids)["10449"] == "PMC10449"
+    assert batches == [200, 200, 50]
+
+
+def test_a_failed_pmid_lookup_is_raised_not_reported_as_no_record(monkeypatch):
+    monkeypatch.setattr(
+        pmc.requests, "get", lambda *args, **kwargs: FakeIdconv([], 503),
+    )
+    with pytest.raises(requests.HTTPError):
+        pmc.pmids_to_pmcids(["38275943"])
+
+
 class FakeResponse:
     def __init__(self, status_code: int = 200, content: bytes = b""):
         self.status_code = status_code

@@ -23,6 +23,7 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- A PubMed ID (PMID) was dropped without a message: NCBI's ID Converter moved and now answers the PMID as a number, which never matched the ID sent. The lookup moved to `pmc.py`, uses the new address, sends batches of 200 and is tested.
 - The R script export did not run, the Excel export failed for ZIP uploads, and the LaTeX export did not compile.
 - Two figures with the same label (two uploads named alike, or two "Figure 1" captions on a page) kept one result between them.
 - File names and the model's text are escaped before they go into HTML.
