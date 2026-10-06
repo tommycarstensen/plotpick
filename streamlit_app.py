@@ -13,6 +13,7 @@ environment variable or in .streamlit/secrets.toml:
     ANTHROPIC_API_KEY = "sk-ant-..."
 """
 
+import html
 import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -641,8 +642,10 @@ with tab_results:
         }
 
         for label, result in st.session_state.results.items():
+            # The label is a file name and the summary is the model's reading
+            # of a figure: both are escaped before they go into HTML.
             st.markdown(
-                f'<h4 style="color:{LIGHT_BLUE};">{label}</h4>',
+                f'<h4 style="color:{LIGHT_BLUE};">{html.escape(label)}</h4>',
                 unsafe_allow_html=True,
             )
 
@@ -662,10 +665,10 @@ with tab_results:
             with col_data:
                 # Metadata as a compact inline summary
                 summary = figure_summary(result)
-                fig_type = summary["figure_type"]
-                y_ax = summary["y_axis"]
-                scale = summary["scale"]
-                conf = summary["confidence"]
+                fig_type = html.escape(summary["figure_type"])
+                y_ax = html.escape(summary["y_axis"])
+                scale = html.escape(summary["scale"])
+                conf = html.escape(summary["confidence"])
                 notes = summary["notes"]
                 st.markdown(
                     f'<div style="background:{NAVY};border-left:4px solid {BLUE};'

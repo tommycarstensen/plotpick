@@ -245,6 +245,18 @@ def test_two_uploads_with_one_name_keep_two_results(app, fake_anthropic):
     assert sorted(at.session_state.results) == ["fig1.png", "fig1.png (2)"]
 
 
+def test_model_text_and_file_names_are_escaped_in_html(app, fake_anthropic):
+    """A figure can carry text that steers the model into writing HTML."""
+    fake_anthropic.answer["y_axis"] = '<img src=x onerror="alert(1)">'
+    at = extract_all(upload(app().run(), "<b>plot</b>.png", png_file(40, 30)))
+    assert not at.exception
+    # Only markdown passed with unsafe_allow_html=True renders tags.
+    raw_html = " ".join(m.value for m in at.markdown if m.proto.allow_html)
+    assert "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;" in raw_html
+    assert "&lt;b&gt;plot&lt;/b&gt;.png" in raw_html
+    assert "<img" not in raw_html and "<b>plot" not in raw_html
+
+
 def test_extraction_shows_the_results_tab(app, fake_anthropic):
     """The tab is selected through Session State, not by a script in an iframe."""
     del fake_anthropic
