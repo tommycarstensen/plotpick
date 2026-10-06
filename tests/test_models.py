@@ -192,7 +192,7 @@ def test_null_fields_do_not_crash():
     )
     assert summary == {
         "figure_type": "?", "y_axis": "?", "scale": "?",
-        "confidence": "?", "notes": "",
+        "confidence": "not given", "notes": "",
     }
 
 
@@ -208,10 +208,10 @@ def test_populated_fields_are_capitalised():
     assert summary["figure_type"] == "Boxplot"
     assert summary["scale"] == "Linear"
     assert summary["y_axis"] == "IL-6"
-    assert summary["confidence"] == "76"
+    assert summary["confidence"] == "76/100"
     assert summary["notes"] == "overlapping"
 
 
 def test_zero_confidence_is_not_reported_as_unknown():
-    """0 is falsy but a real score -- it must not become "?"."""
-    assert figure_summary({"confidence": 0})["confidence"] == "0"
+    """0 is falsy but a real score -- it must not become "not given"."""
+    assert figure_summary({"confidence": 0})["confidence"] == "0/100"

@@ -550,6 +550,8 @@ with st.sidebar:
             ),
         )
         st.caption(
+            "Of the nine models in these charts the app offers only Haiku "
+            "4.5; its default, Sonnet 5.5, is not shown. "
             "Numeric F1 is the F1 between the numbers a model extracts and "
             "the numbers in the ground truth, matched within 5%; it does not "
             "check that a value sits in the right group. Across six ChartX "
@@ -673,17 +675,17 @@ with tab_results:
         )
         with st.expander("What is the confidence score?"):
             st.markdown(
-                "The confidence score (0--100) is the number the AI model "
+                "The confidence score (0-100) is the number the AI model "
                 "itself reports for how precisely it thinks it read the "
                 "figure. It is **not** a probability and has not been checked "
                 "against true values, so it is not known whether it is higher "
                 "for figures that were read correctly.\n\n"
                 "The model was told to choose its number like this:\n\n"
-                "| Range | Instruction to the model |\n"
+                "| Range | What the model was told each range means |\n"
                 "|-------|---------|\n"
-                "| 95--100 | Crisp axes, clear ticks, values easy to read exactly |\n"
-                "| 80--94 | Good axes but some interpolation between ticks needed |\n"
-                "| 60--79 | Small figure, overlapping elements, or missing ticks |\n"
+                "| 95-100 | Crisp axes, clear ticks, values easy to read exactly |\n"
+                "| 80-94 | Good axes but some interpolation between ticks needed |\n"
+                "| 60-79 | Small figure, overlapping elements, or missing ticks |\n"
                 "| < 60 | Largely guessing |\n\n"
                 "Check every extracted value against the original figure, "
                 "whatever the score, and do not skip a value because it is "
@@ -731,7 +733,7 @@ with tab_results:
                     f'<span><b>Type:</b> {fig_type}</span>'
                     f'<span><b>Y-axis:</b> {y_ax}</span>'
                     f'<span><b>Scale:</b> {scale}</span>'
-                    f'<span><b>Confidence (model\'s own):</b> {conf}/100</span>'
+                    f'<span><b>Confidence (model\'s own):</b> {conf}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

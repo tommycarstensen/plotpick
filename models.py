@@ -51,7 +51,8 @@ MODELS: tuple[Model, ...] = (
         needs_own_key=False,
         blurb=(
             "Latest Sonnet. Not benchmarked; on synthetic charts Sonnet 4.6 "
-            "scored 92.2% (ChartX) and 89.0% (PlotQA)."
+            "scored 92.2% numeric F1 (ChartX) and 89.0% best-series "
+            "(PlotQA). See Benchmarks below."
         ),
     ),
     Model(
@@ -60,7 +61,8 @@ MODELS: tuple[Model, ...] = (
         needs_own_key=False,
         blurb=(
             "Faster and cheaper. On synthetic charts it scored 88.7% numeric "
-            "F1 (ChartX) and 70.2% (PlotQA)."
+            "F1 (ChartX) and 70.2% best-series (PlotQA), below DePlot there. "
+            "See Benchmarks below."
         ),
     ),
     Model(
@@ -177,6 +179,8 @@ def extract_blocked_reason(
 def figure_summary(result: dict) -> dict[str, str]:
     """Display strings for the metadata banner above an extracted table.
 
+    The confidence comes back ready to print ("76/100", or "not given").
+
     Every field can legitimately come back as JSON ``null``: the extraction
     prompt tells the model to use null for anything it cannot read.  A
     ``dict.get`` default only fires for a *missing* key, so a present-but-null
@@ -188,6 +192,8 @@ def figure_summary(result: dict) -> dict[str, str]:
         "figure_type": str(result.get("figure_type") or "?").capitalize(),
         "y_axis": str(result.get("y_axis") or "?"),
         "scale": str(result.get("scale") or "?").capitalize(),
-        "confidence": "?" if confidence is None else str(confidence),
+        "confidence": (
+            "not given" if confidence is None else f"{confidence}/100"
+        ),
         "notes": str(result.get("notes") or ""),
     }
