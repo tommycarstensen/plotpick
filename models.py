@@ -61,8 +61,8 @@ MODELS: tuple[Model, ...] = (
         needs_own_key=False,
         blurb=(
             "Faster and cheaper. On synthetic charts it scored 88.7% numeric "
-            "F1 (ChartX) and 70.2% best-series (PlotQA), below DePlot there. "
-            "See Benchmarks below."
+            "F1 (ChartX, where DePlot scored 74.3%) and 70.2% best-series "
+            "(PlotQA, where DePlot scored 87.0%). See Benchmarks below."
         ),
     ),
     Model(
