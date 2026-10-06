@@ -186,14 +186,22 @@ def figure_summary(result: dict) -> dict[str, str]:
     ``dict.get`` default only fires for a *missing* key, so a present-but-null
     value used to reach ``.capitalize()`` and raise AttributeError, crashing
     the Results tab after a successful extraction.
+
+    White space is collapsed: the banner is HTML, and a blank line in the
+    model's text would end that block and let what follows render as
+    Markdown, an image link included.
     """
+    def text(key: str, default: str) -> str:
+        return " ".join(str(result.get(key) or default).split())
+
     confidence = result.get("confidence")
     return {
-        "figure_type": str(result.get("figure_type") or "?").capitalize(),
-        "y_axis": str(result.get("y_axis") or "?"),
-        "scale": str(result.get("scale") or "?").capitalize(),
+        "figure_type": text("figure_type", "?").capitalize(),
+        "y_axis": text("y_axis", "?"),
+        "scale": text("scale", "?").capitalize(),
         "confidence": (
-            "not given" if confidence is None else f"{confidence}/100"
+            "not given" if confidence is None
+            else " ".join(f"{confidence}/100".split())
         ),
-        "notes": str(result.get("notes") or ""),
+        "notes": text("notes", ""),
     }

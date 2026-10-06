@@ -268,6 +268,16 @@ def test_model_text_and_file_names_are_escaped_in_html(app, fake_anthropic):
     assert "<img" not in raw_html and "<b>plot" not in raw_html
 
 
+def test_model_notes_and_errors_are_not_rendered_as_markdown(app, fake_anthropic):
+    """An image link in the model's text made the viewer's browser fetch it."""
+    link = "![](https://example.invalid/p.png)"
+    fake_anthropic.answer["notes"] = f"see {link}"
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    assert not [m for m in at.markdown if link in m.value]
+    assert any(link in t.value for t in at.text)
+
+
 def test_extraction_shows_the_results_tab(app, fake_anthropic):
     """The tab is selected through Session State, not by a script in an iframe."""
     del fake_anthropic

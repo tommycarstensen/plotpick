@@ -516,7 +516,10 @@ with tab_results:
             )
 
             if "error" in result:
-                st.error(f"Extraction failed: {result['error']}")
+                # The error can quote the model's reply: shown as code, so
+                # that none of it renders as Markdown.
+                st.error("Extraction failed:")
+                st.code(result["error"], language=None)
                 continue
 
             # Two-column layout: source image | metadata + table
@@ -549,7 +552,8 @@ with tab_results:
                     unsafe_allow_html=True,
                 )
                 if notes:
-                    st.caption(f"Notes: {notes}")
+                    # The model's own words: plain text, never Markdown.
+                    st.text(f"Notes: {notes}")
 
                 # Data table with uncertain-value highlighting
                 data_rows = result.get("data", [])

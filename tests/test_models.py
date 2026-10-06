@@ -212,6 +212,18 @@ def test_populated_fields_are_capitalised():
     assert summary["notes"] == "overlapping"
 
 
+def test_white_space_is_collapsed():
+    """A blank line ended the HTML banner, and what followed rendered as
+    Markdown, an image link included."""
+    summary = figure_summary(
+        {"y_axis": "mg/L\n\n![](https://example.invalid/p.png)",
+         "confidence": "7\n\n0", "notes": "a\n\nb"}
+    )
+    assert summary["y_axis"] == "mg/L ![](https://example.invalid/p.png)"
+    assert summary["confidence"] == "7 0/100"
+    assert summary["notes"] == "a b"
+
+
 def test_zero_confidence_is_not_reported_as_unknown():
     """0 is falsy but a real score -- it must not become "not given"."""
     assert figure_summary({"confidence": 0})["confidence"] == "0/100"
