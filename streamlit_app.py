@@ -401,13 +401,19 @@ elif run_selected:
     ]
 
 
-@st.cache_resource(max_entries=8)
-def _get_client(key: str) -> anthropic.Anthropic:
+@st.cache_resource(max_entries=2)
+def _shared_client(key: str) -> anthropic.Anthropic:
+    """One client for the app's own key, shared by every session."""
     return anthropic.Anthropic(api_key=key)
 
 
 if images_to_extract:
-    client = _get_client(api_key)
+    # A key the visitor pasted is used for this run only: a cached client
+    # would keep it in memory shared by all sessions.
+    client = (
+        anthropic.Anthropic(api_key=api_key) if selected_model.needs_own_key
+        else _shared_client(api_key)
+    )
     total = len(images_to_extract)
     results: dict[str, dict[str, Any]] = dict(st.session_state.results)
     # Held in Session State from the start, so that a figure that raises

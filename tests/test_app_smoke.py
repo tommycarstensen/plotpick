@@ -193,6 +193,7 @@ def fake_anthropic(monkeypatch):
     """Stand in for the API: record each request, reply with `answer` as JSON."""
     fake = SimpleNamespace(
         sent=[],
+        keys=[],  # the key of each client made
         answer={
             "figure_type": "bar chart", "y_axis": "mg/L", "scale": "linear",
             "confidence": 90, "notes": "",
@@ -202,7 +203,7 @@ def fake_anthropic(monkeypatch):
 
     class Client:
         def __init__(self, api_key: str):
-            del api_key
+            fake.keys.append(api_key)
             self.messages = self
 
         def create(self, **request):
@@ -302,6 +303,18 @@ def test_model_notes_and_errors_are_not_rendered_as_markdown(app, fake_anthropic
     assert not at.exception
     assert not [m for m in at.markdown if link in m.value]
     assert any(link in t.value for t in at.text)
+
+
+def test_a_pasted_key_is_not_kept_in_a_shared_client(app, fake_anthropic):
+    """Clients were cached across sessions by key, the visitor's included."""
+    at = upload(app().run(), "plot.png", png_file(40, 30))
+    at.selectbox[0].set_value(OPUS).run()
+    next(t for t in at.text_input if "API key" in t.label).input(
+        "sk-ant-visitor",
+    ).run()
+    at = extract_all(extract_all(at))
+    assert not at.exception
+    assert fake_anthropic.keys == ["sk-ant-visitor", "sk-ant-visitor"]
 
 
 def test_extraction_shows_the_results_tab(app, fake_anthropic):
