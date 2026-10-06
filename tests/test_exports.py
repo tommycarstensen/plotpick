@@ -1,10 +1,13 @@
 """Tests for exports.py: the R, Excel and LaTeX exports.
 
 The R script is run with Rscript and the LaTeX compiled with pdflatex when
-they are installed; the other checks run everywhere.
+they are installed; the other checks run everywhere.  CI's exports job
+installs both and sets PLOTPICK_EXPORT_TOOLS, so that a missing tool fails
+there instead of skipping.
 """
 
 import io
+import os
 import shutil
 import subprocess
 
@@ -21,6 +24,12 @@ from exports import (
 )
 
 ZIP_LABEL = "batch.zip/trial_2019.pdf p.3 Figure 2"
+REQUIRED = bool(os.environ.get("PLOTPICK_EXPORT_TOOLS"))
+
+
+def missing(tool: str) -> bool:
+    """Whether to skip a check that needs `tool`: never when CI requires it."""
+    return shutil.which(tool) is None and not REQUIRED
 
 
 def table() -> pd.DataFrame:
@@ -50,7 +59,7 @@ def test_r_script_quotes_text_and_leaves_numbers_bare():
     assert "`mean` = c(1.5, 2.0, NA)" in script
 
 
-@pytest.mark.skipif(shutil.which("Rscript") is None, reason="R is not installed")
+@pytest.mark.skipif(missing("Rscript"), reason="R is not installed")
 def test_r_script_runs_in_r(tmp_path):
     path = tmp_path / "plotpick.R"
     path.write_text(
@@ -101,11 +110,12 @@ def test_latex_escapes_special_characters():
     assert "NaN" not in latex
 
 
-@pytest.mark.skipif(shutil.which("pdflatex") is None, reason="LaTeX is not installed")
+@pytest.mark.skipif(missing("pdflatex"), reason="LaTeX is not installed")
 def test_latex_compiles(tmp_path):
     (tmp_path / "table.tex").write_text(
-        "\\documentclass{article}\n\\usepackage[T1]{fontenc}\n"
-        "\\usepackage{textcomp}\n\\usepackage{booktabs}\n"
+        "\\documentclass{article}\n\\usepackage{lmodern}\n"
+        "\\usepackage[T1]{fontenc}\n\\usepackage{textcomp}\n"
+        "\\usepackage{booktabs}\n"
         "\\begin{document}\n" + dataframe_to_latex(table()) + "\\end{document}\n",
         encoding="utf-8",
     )

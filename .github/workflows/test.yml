@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
@@ -21,7 +21,7 @@ jobs:
       - run: pytest tests/ -v
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,3 +31,18 @@ jobs:
       - run: ruff check .
       - run: pycodestyle .
       - run: pyright models.py streamlit_app.py pdf_figures.py figure_images.py process_memory.py pdf_backend_pdfium.py pmc.py exports.py tests
+
+  exports:
+    # The R script must run in R and the LaTeX must compile; neither tool is
+    # on the runner image, so without this job those two tests only skip.
+    runs-on: ubuntu-24.04
+    env:
+      PLOTPICK_EXPORT_TOOLS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends r-base-core texlive-latex-recommended lmodern
+      - run: pip install -r requirements.txt pytest
+      - run: pytest tests/test_exports.py -v -rs
