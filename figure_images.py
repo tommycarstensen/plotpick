@@ -31,7 +31,7 @@ import io
 import weakref
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from typing import Protocol
 
@@ -69,12 +69,38 @@ _LIVE: "weakref.WeakSet[Figure]" = weakref.WeakSet()
 
 
 def held_summary() -> str:
-    """How many figures all sessions hold between them, and their size."""
+    """How many figures all sessions hold between them, and their size.
+
+    A renamed copy from with_distinct_labels() shares its images with the
+    original, so images are counted once each.
+    """
     figures = list(_LIVE)
-    size = sum(
-        len(f.png) + (0 if f.preview is f.png else len(f.preview)) for f in figures
-    )
-    return f"all sessions hold {len(figures)} figure(s), {size / 1e6:.0f} MB"
+    images = {id(data): len(data) for f in figures for data in (f.png, f.preview)}
+    count = len({id(f.png) for f in figures})
+    return f"all sessions hold {count} figure(s), {sum(images.values()) / 1e6:.0f} MB"
+
+
+def with_distinct_labels(figures: Sequence["Figure"]) -> list["Figure"]:
+    """The figures, with a number added to every label already used.
+
+    The app looks up selections, results and source images by label, so two
+    figures sharing one (two uploads named fig1.png, or two "Figure 1"
+    captions on a page) were extracted twice and kept one result.  The second
+    becomes "fig1.png (2)"; the images are shared, not copied.
+    """
+    taken = {figure.label for figure in figures}
+    seen: set[str] = set()
+    distinct: list[Figure] = []
+    for figure in figures:
+        if figure.label in seen:
+            number = 2
+            while f"{figure.label} ({number})" in taken:
+                number += 1
+            figure = replace(figure, label=f"{figure.label} ({number})")
+            taken.add(figure.label)
+        seen.add(figure.label)
+        distinct.append(figure)
+    return distinct
 
 
 class Upload(Protocol):

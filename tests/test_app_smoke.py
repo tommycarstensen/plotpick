@@ -231,6 +231,20 @@ def test_extraction_sends_the_upload_at_the_api_width(app, fake_anthropic):
     assert at.dataframe
 
 
+def test_two_uploads_with_one_name_keep_two_results(app, fake_anthropic):
+    """Both were sent to the model and the second result replaced the first."""
+    at = app().run()
+    if not hasattr(at, "file_uploader"):
+        pytest.skip("this Streamlit's AppTest cannot simulate an upload")
+    at = extract_all(at.file_uploader[0].set_value([
+        ("fig1.png", png_file(60, 40), "image/png"),
+        ("fig1.png", png_file(80, 50), "image/png"),
+    ]).run())
+    assert not at.exception
+    assert len(fake_anthropic.sent) == 2
+    assert sorted(at.session_state.results) == ["fig1.png", "fig1.png (2)"]
+
+
 def test_extraction_shows_the_results_tab(app, fake_anthropic):
     """The tab is selected through Session State, not by a script in an iframe."""
     del fake_anthropic

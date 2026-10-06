@@ -11,12 +11,14 @@ from PIL import Image
 from figure_images import (
     MAX_API_WIDTH,
     MAX_DISPLAY_WIDTH,
+    Figure,
     file_to_figures,
     held_summary,
     image_to_base64,
     make_figure,
     pdf_to_figures,
     sync_uploads,
+    with_distinct_labels,
 )
 from tests.pdf_builder import PageSpec, box, build_pdf, text
 
@@ -101,6 +103,39 @@ class TestHeldSummary:
         del wide, small
         gc.collect()
         assert held_summary() == before
+
+    def test_a_renamed_copy_is_not_counted_twice(self):
+        gc.collect()
+        before = held_summary()
+        plot = make_figure("plot.png", Image.new("RGB", (40, 30), "white"))
+        after = held_summary()
+        copies = with_distinct_labels([plot, plot])
+        assert len(copies) == 2
+        assert held_summary() == after != before
+
+
+class TestDistinctLabels:
+    @staticmethod
+    def figures(*labels: str) -> list[Figure]:
+        image = Image.new("RGB", (4, 3), "white")
+        return [make_figure(label, image) for label in labels]
+
+    def test_repeated_labels_get_a_number(self):
+        figures = self.figures("fig1.png", "fig1.png", "b.pdf p.1 Fig_1", "fig1.png")
+        distinct = with_distinct_labels(figures)
+        assert [f.label for f in distinct] == [
+            "fig1.png", "fig1.png (2)", "b.pdf p.1 Fig_1", "fig1.png (3)",
+        ]
+        assert distinct[1].png is figures[1].png
+
+    def test_a_number_already_in_use_is_skipped(self):
+        figures = self.figures("fig1.png", "fig1.png", "fig1.png (2)")
+        labels = [f.label for f in with_distinct_labels(figures)]
+        assert labels == ["fig1.png", "fig1.png (3)", "fig1.png (2)"]
+
+    def test_distinct_labels_are_left_alone(self):
+        figures = self.figures("a.png", "b.png")
+        assert with_distinct_labels(figures) == figures
 
 
 class TestFilesToFigures:

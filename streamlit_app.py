@@ -31,6 +31,7 @@ from figure_images import (
     image_to_base64,
     pdf_to_figures,
     sync_uploads,
+    with_distinct_labels,
 )
 from models import (
     DEFAULT_MODEL,
@@ -423,11 +424,11 @@ with st.sidebar:
                         )
             log_memory(f"fetching {len(raw_ids)} PubMed ID(s)", held_summary())
 
-    st.session_state.all_images = upload_figures + [
+    st.session_state.all_images = with_distinct_labels(upload_figures + [
         figure
         for figures in st.session_state.pubmed_figures.values()
         for figure in figures
-    ]
+    ])
 
     # Read selection state from checkbox widget keys (updated by Streamlit
     # before the script reruns, so this is always current).
