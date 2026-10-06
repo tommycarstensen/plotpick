@@ -1,20 +1,20 @@
 # PlotPick
 
+[![Tests](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml/badge.svg)](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml)
+
 **Live demo:** [plotpick.streamlit.app](https://plotpick.streamlit.app/)
 
 AI-powered extraction of numerical data from scientific figures.
 
-Upload images, PDFs, or ZIP archives. Each figure is sent to Claude's
-vision API with a structured extraction prompt. Results are displayed
-as tables and can be exported in multiple formats.
+PlotPick is for systematic reviewers and meta-analysts who need numbers that a study reports only in a figure. Interactive digitisers take one figure at a time; PlotPick finds the figures and tables in a batch of PDFs and asks a Claude model for a first transcription of each, which you then check against the figure. The companion preprint is [arXiv:2605.06021](https://arxiv.org/abs/2605.06021).
+
+Upload images, PDFs, or ZIP archives, or enter PubMed identifiers. Each figure is sent to Claude's vision API with a structured extraction prompt. Results are displayed as tables beside their figure and can be exported in multiple formats.
 
 ## Features
 
-- **PDF figure detection** -- automatically finds and crops individual
-  figures and tables from multi-page PDFs using caption detection
-- **Batch processing** -- upload multiple files at once
-- **Structured extraction** -- reads boxplots, bar charts, and line plots
-  with biomarker, group, timepoint, and summary statistics
+- **PDF figure detection** -- finds the captions of figures and tables in multi-page PDFs and crops each one; a page with no caption it recognises is offered whole
+- **Batch processing** -- upload multiple files at once, or fetch open-access articles from PubMed Central
+- **Structured extraction** -- reads box plots, bar charts and line plots with biomarker, group, timepoint and summary statistics. Table crops are sent with the same chart prompt; that use has not been tested.
 - **Export formats** -- Markdown, Excel, CSV, LaTeX, JSON, R script
 
 ## Architecture
@@ -38,10 +38,10 @@ flowchart TD
 
 ## Quickstart
 
-1. Install dependencies:
+1. With Python 3.12 or later, get the code and install its dependencies:
 
    ```
-   pip install -r requirements.txt
+   git clone https://github.com/tommycarstensen/plotpick.git && cd plotpick && pip install -r requirements.txt
    ```
 
 2. Supply an Anthropic API key. Either export it:
@@ -50,7 +50,7 @@ flowchart TD
    export ANTHROPIC_API_KEY="sk-ant-..."
    ```
 
-   or write it to `.streamlit/secrets.toml`:
+   or write it to `.streamlit/secrets.toml` (create the `.streamlit` directory first; git ignores the file):
 
    ```toml
    ANTHROPIC_API_KEY = "sk-ant-..."
@@ -63,6 +63,20 @@ flowchart TD
    ```
    streamlit run streamlit_app.py
    ```
+
+Without a key the app still runs: uploads and PubMed fetches are read, and the figures and tables are detected, cropped and shown in the gallery. Only the two Extract buttons need a key, and the sidebar says so.
+
+## Tests
+
+The tests need no API key: the Anthropic client and the PubMed Central service are replaced by fakes. Continuous integration runs them on Python 3.12 and 3.13, with ruff, pycodestyle and pyright:
+
+```
+pip install pytest && pytest tests/
+```
+
+## Data handling
+
+Each figure you extract is sent as an image to Anthropic's API, on the hosted demo through the operator's key. PlotPick keeps uploads, crops and results in memory for the session only and writes nothing to disk. Do not upload material you may not send to a third party.
 
 ## Models
 
@@ -90,7 +104,7 @@ Hovering a disabled button shows the specific reason.
 
 ## Benchmarks
 
-The benchmark behind the paper lives in its own repository, [plotpick-validation](https://github.com/tommycarstensen/plotpick-validation): the runners, the per-item results and the scripts that regenerate every table and figure. Nothing in this repository runs it.
+"The paper" below is the companion preprint, [arXiv:2605.06021](https://arxiv.org/abs/2605.06021). The benchmark behind it lives in its own repository, [plotpick-validation](https://github.com/tommycarstensen/plotpick-validation): the runners, the per-item results and the scripts that regenerate every table and figure. Nothing in this repository runs it.
 
 The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `assets/chartx_heatmap.png`) are the paper's Figures 1 and 2, written by `benchmarks/plot_chartx_validation.py --out-dir <this repo>/assets` in that repository.
 
@@ -109,3 +123,15 @@ What the benchmark does and does not show:
 
 - Python 3.12+
 - An [Anthropic API key](https://console.anthropic.com/)
+
+## Support and contributing
+
+Questions and bug reports go to the [issue tracker](https://github.com/tommycarstensen/plotpick/issues); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Citation
+
+Please cite the companion preprint: Carstensen, T. PlotPick: AI-powered batch extraction of numerical data from scientific figures. arXiv:2605.06021, https://doi.org/10.48550/arXiv.2605.06021.
+
+## License
+
+MIT; see [LICENSE](LICENSE).
