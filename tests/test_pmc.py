@@ -1,9 +1,32 @@
-"""Tests for pmc.py: locating an article's PDF in the PMC Cloud Service."""
+"""Tests for pmc.py: reading PubMed identifiers, and locating an article's PDF
+in the PMC Cloud Service."""
 
 import pytest
 import requests
 
 import pmc
+
+
+def test_parses_bare_pmids_and_pmcids_with_any_separator():
+    text = " 12345678, pmc7654321;23456789\nPMC111 "
+    assert pmc.parse_pubmed_ids(text) == [
+        "12345678", "PMC7654321", "23456789", "PMC111",
+    ]
+
+
+def test_parses_pubmed_and_pmc_urls():
+    text = (
+        "https://pubmed.ncbi.nlm.nih.gov/31452104/ "
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC6711232/ "
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/pmc6711233/"
+    )
+    assert pmc.parse_pubmed_ids(text) == ["31452104", "PMC6711232", "PMC6711233"]
+
+
+def test_ignores_words_and_short_numbers():
+    """A DOI, a word or a four-digit year is not a PubMed identifier."""
+    assert pmc.parse_pubmed_ids("2019 trial 10.1000/xyz PMC") == []
+    assert pmc.parse_pubmed_ids("   ") == []
 
 
 class FakeResponse:

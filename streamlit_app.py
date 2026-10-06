@@ -14,7 +14,6 @@ environment variable or in .streamlit/secrets.toml:
 """
 
 import json
-import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +45,7 @@ from models import (
     resolve_api_key,
     shared_key_from_environment,
 )
-from pmc import download_pmc_pdf
+from pmc import download_pmc_pdf, parse_pubmed_ids
 from process_memory import log_memory
 
 if TYPE_CHECKING:
@@ -150,38 +149,6 @@ st.markdown(f"<style>{_CSS_PATH.read_text()}</style>", unsafe_allow_html=True)
 # Helpers -- PubMed / PMC
 # ---------------------------------------------------------------------------
 _NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-
-
-def _parse_pubmed_ids(text: str) -> list[str]:
-    """Extract PubMed IDs or PMCIDs from free-text input.
-
-    Accepts: PMID (numeric), PMC + digits, or full PubMed/PMC URLs.
-    Returns normalised IDs like '12345678' or 'PMC1234567'.
-    """
-    ids: list[str] = []
-    for token in re.split(r"[,;\s]+", text.strip()):
-        if not token:
-            continue
-        # Full URL: https://pubmed.ncbi.nlm.nih.gov/12345678/
-        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", token)
-        if m:
-            ids.append(m.group(1))
-            continue
-        # Full URL: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567/
-        m = re.search(r"pmc/articles/(PMC\d+)", token, re.IGNORECASE)
-        if m:
-            ids.append(m.group(1).upper())
-            continue
-        # Bare PMCID
-        m = re.fullmatch(r"(PMC\d+)", token, re.IGNORECASE)
-        if m:
-            ids.append(m.group(1).upper())
-            continue
-        # Bare PMID (numeric)
-        if re.fullmatch(r"\d{5,12}", token):
-            ids.append(token)
-            continue
-    return ids
 
 
 def _pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
@@ -423,7 +390,7 @@ with st.sidebar:
     )
 
     if fetch_pubmed and pubmed_input.strip():
-        raw_ids = _parse_pubmed_ids(pubmed_input)
+        raw_ids = parse_pubmed_ids(pubmed_input)
         if not raw_ids:
             st.error("No valid PubMed IDs found in input.")
         else:

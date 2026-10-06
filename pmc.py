@@ -1,4 +1,4 @@
-"""Fetch article PDFs from the PMC Open Access subset.
+"""Read PubMed identifiers and fetch article PDFs from the PMC Open Access subset.
 
 Standalone module with no Streamlit dependency -- usable from both the app
 and from batch scripts.
@@ -14,6 +14,40 @@ import requests
 # Service, one folder per article version: PMC123.1/PMC123.1.pdf.
 PMC_CLOUD_URL = "https://pmc-oa-opendata.s3.amazonaws.com/"
 _S3_NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
+
+
+def parse_pubmed_ids(text: str) -> list[str]:
+    """Extract PubMed IDs or PMCIDs from free-text input.
+
+    Accepts: PMID (numeric), PMC + digits, or full PubMed/PMC URLs,
+    separated by commas, semicolons or white space.
+    Returns normalised IDs like '12345678' or 'PMC1234567'.
+    """
+    ids: list[str] = []
+    for token in re.split(r"[,;\s]+", text.strip()):
+        if not token:
+            continue
+        # Full URL: https://pubmed.ncbi.nlm.nih.gov/12345678/
+        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", token)
+        if m:
+            ids.append(m.group(1))
+            continue
+        # Full URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/ or the
+        # older https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567/
+        m = re.search(r"articles/(PMC\d+)", token, re.IGNORECASE)
+        if m:
+            ids.append(m.group(1).upper())
+            continue
+        # Bare PMCID
+        m = re.fullmatch(r"(PMC\d+)", token, re.IGNORECASE)
+        if m:
+            ids.append(m.group(1).upper())
+            continue
+        # Bare PMID (numeric)
+        if re.fullmatch(r"\d{5,12}", token):
+            ids.append(token)
+            continue
+    return ids
 
 
 def _versions(pmcid: str) -> list[int]:
