@@ -246,6 +246,16 @@ def test_two_uploads_with_one_name_keep_two_results(app, fake_anthropic):
     assert sorted(at.session_state.results) == ["fig1.png", "fig1.png (2)"]
 
 
+def test_a_reply_of_the_wrong_shape_fails_only_its_figure(app, fake_anthropic):
+    """A JSON array used to raise outside the handled errors and lose the
+    whole batch, results already paid for included."""
+    fake_anthropic.answer = [1, 2, 3]
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    (result,) = at.session_state.results.values()
+    assert "not a JSON object" in result["error"]
+
+
 def test_model_text_and_file_names_are_escaped_in_html(app, fake_anthropic):
     """A figure can carry text that steers the model into writing HTML."""
     fake_anthropic.answer["y_axis"] = '<img src=x onerror="alert(1)">'
