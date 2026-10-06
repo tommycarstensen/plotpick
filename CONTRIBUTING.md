@@ -45,9 +45,7 @@ pytest tests/ -v
 
 ## API keys
 
-PlotPick requires a VLM API key (Anthropic, OpenAI, or Google). If your
-contribution involves a new provider, add the API caller to
-`streamlit_app.py` and document the required key in the README.
+PlotPick requires an Anthropic API key; it has no other backend. If your contribution adds another provider, add its API caller to `streamlit_app.py` and document the required key in the README.
 
 ## Code style
 

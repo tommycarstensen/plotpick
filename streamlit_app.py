@@ -539,7 +539,8 @@ with st.sidebar:
             str(Path(__file__).parent / "assets" / "chartx_by_type.png"),
             caption=(
                 "Numeric F1 by chart type, ChartX validation split "
-                "(synthetic charts, 50 per type), with 95% intervals"
+                "(synthetic charts, 50 per type; one fewer for Haiku 4.5 on "
+                "plain bar charts), with 95% intervals"
             ),
         )
         st.image(
