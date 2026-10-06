@@ -74,9 +74,29 @@ The tests need no API key: the Anthropic client and the PubMed Central service a
 pip install pytest && pytest tests/
 ```
 
+## Output
+
+The Results tab shows each figure's table beside the image it was read from, with the values the model flagged as uncertain in amber. The Export tab offers Markdown, Excel (one sheet for all rows and one per figure), CSV, LaTeX, JSON and an R script.
+
+- Every exported row starts with `source` (the file, page and caption label), `model`, `extracted_at` (UTC), `figure_type`, `y_axis` and `scale`, followed by the fields the model returned: `biomarker`, `group` and `timepoint`, then `median`, `q1` and `q3` for box plots; `n`, `mean`, `error` and `error_type` for bar charts; and `mean_or_median`, `error` and `error_type` for line plots.
+- The JSON export holds each figure's full result: the fields above, the model's `confidence` (0-100) and `notes`, each row's `uncertain` list, `image_sha256` (identifying the crop that was sent), and the error for any figure that failed.
+- Extracting a figure again replaces its earlier result.
+
+## Using PlotPick in a systematic review
+
+PlotPick gives a first transcription; it does not replace data extraction by people. Its accuracy on published figures has not been measured, and the confidence score and the amber flags are the model's own and have not been validated.
+
+- Check every value you keep against the article, not only against the crop: a crop can miss part of a figure or table, and a figure whose caption PlotPick did not recognise is not shown at all, so compare the gallery with the article's list of figures.
+- Check the group, the timepoint, the error type (SD, SE or CI) and the units as well as the number. The benchmark behind the paper scores numbers only, not whether a value is assigned to the right group.
+- Report PlotPick as an automation tool used in data collection, as PRISMA 2020 item 9 asks ([Page et al. 2021](https://doi.org/10.1136/bmj.n71)) and as the position statement of Cochrane, the Campbell Collaboration, JBI and the Collaboration for Environmental Evidence on AI in evidence synthesis describes ([Flemyng et al. 2025](https://doi.org/10.1002/cl2.70074)): name the PlotPick release or commit, the model and the date (both are in every exported row), what it was used for, and how its output was checked.
+
 ## Data handling
 
-Each figure you extract is sent as an image to Anthropic's API, on the hosted demo through the operator's key. PlotPick keeps uploads, crops and results in memory for the session only and writes nothing to disk. Do not upload material you may not send to a third party.
+Each figure you extract is sent as an image to Anthropic's API, on the hosted demo through the operator's key. PlotPick keeps uploads, crops and results in memory for the session only and writes nothing to disk; on the hosted demo they are processed on Streamlit Community Cloud. A key you paste for Opus stays in your session and is not shared with other sessions. Do not upload material you may not send to a third party.
+
+## Hosted demo
+
+[plotpick.streamlit.app](https://plotpick.streamlit.app/) runs PlotPick on Streamlit Community Cloud on the maintainer's API key, for trying PlotPick on a few figures. It has no guarantee of availability; for a review, run PlotPick locally on your own key.
 
 ## Models
 
