@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import logging
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -312,7 +313,23 @@ def test_uncertain_flags_outlive_the_first_display(app, fake_anthropic):
     (result,) = at.session_state.results.values()
     assert result["data"] == fake_anthropic.answer["data"]
     shown = [list(frame.value.columns) for frame in at.dataframe]
-    assert shown == [["group", "mean"], ["source", "group", "mean"]]
+    assert shown == [
+        ["group", "mean"],
+        ["source", "model", "extracted_at", "group", "mean"],
+    ]
+
+
+def test_results_and_exports_name_the_model_and_the_time(app, fake_anthropic):
+    """A transcription used in a review has to say what produced it."""
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    (result,) = at.session_state.results.values()
+    assert result["model"] == "claude-sonnet-5-5"
+    stamp = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00"
+    assert re.fullmatch(stamp, result["extracted_at"])
+    export = at.dataframe[-1].value
+    assert export["model"].tolist() == ["claude-sonnet-5-5"]
+    assert export["extracted_at"].tolist() == [result["extracted_at"]]
 
 
 def test_heavy_work_leaves_a_memory_line_in_the_log(app, fake_anthropic, monkeypatch):

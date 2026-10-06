@@ -16,7 +16,7 @@ environment variable or in .streamlit/secrets.toml:
 import html
 import json
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -562,13 +562,19 @@ if images_to_extract:
             label = figure.label
             st.write(f"\U0001f50d  **[{i + 1}/{total}]** {label}")
             progress.progress((i + 1) / total)
+            # Which model read the figure, and when (UTC), travel with the
+            # result into the JSON export and every tabular export.
+            provenance = {
+                "model": model,
+                "extracted_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            }
             try:
                 result = _extract_from_image(client, figure.png, model)
-                results[label] = result
+                results[label] = {**result, **provenance}
                 n_rows = len(result.get("data", []))
                 st.write(f"\u2705  {n_rows} row(s) extracted")
             except (json.JSONDecodeError, ExtractionError, anthropic.APIError) as exc:
-                results[label] = {"error": str(exc), "data": []}
+                results[label] = {"error": str(exc), "data": [], **provenance}
                 st.write(f"\u274c  Failed: {exc}")
 
         n_ok = sum(1 for r in results.values() if "error" not in r)
@@ -735,7 +741,12 @@ with tab_export:
         all_rows: list[dict[str, Any]] = []
         for label, result in st.session_state.results.items():
             for row in result.get("data", []):
-                all_rows.append({"source": label, **_values_only(row)})
+                all_rows.append({
+                    "source": label,
+                    "model": result.get("model"),
+                    "extracted_at": result.get("extracted_at"),
+                    **_values_only(row),
+                })
 
         if not all_rows:
             st.warning("No data rows found across all extractions.")
