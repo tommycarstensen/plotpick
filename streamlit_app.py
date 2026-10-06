@@ -601,16 +601,34 @@ with tab_export:
     if not st.session_state.results:
         st.info("No results to export yet.")
     else:
-        # Combine all data rows into one dataframe
+        # Combine all data rows into one dataframe.  Each row also carries
+        # what describes its figure: the units and scale of the value axis
+        # matter for every number, and a row's own keys may not overwrite
+        # them or the record of which model read it and when.
         all_rows: list[dict[str, Any]] = []
+        failed: list[str] = []
         for label, result in st.session_state.results.items():
+            if "error" in result:
+                failed.append(label)
+            figure = {
+                "source": label,
+                "model": result.get("model"),
+                "extracted_at": result.get("extracted_at"),
+                "figure_type": result.get("figure_type"),
+                "y_axis": result.get("y_axis"),
+                "scale": result.get("scale"),
+            }
             for row in result.get("data", []):
-                all_rows.append({
-                    "source": label,
-                    "model": result.get("model"),
-                    "extracted_at": result.get("extracted_at"),
-                    **_values_only(row),
-                })
+                values = {
+                    key: value for key, value in _values_only(row).items()
+                    if key not in figure
+                }
+                all_rows.append({**figure, **values})
+        if failed:
+            st.warning(
+                f"{len(failed)} figure(s) failed and have no rows here; the "
+                f"JSON export records them: {', '.join(failed)}"
+            )
 
         if not all_rows:
             st.warning("No data rows found across all extractions.")

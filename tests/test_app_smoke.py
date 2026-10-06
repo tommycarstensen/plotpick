@@ -335,7 +335,8 @@ def test_uncertain_flags_outlive_the_first_display(app, fake_anthropic):
     shown = [list(frame.value.columns) for frame in at.dataframe]
     assert shown == [
         ["group", "mean"],
-        ["source", "model", "extracted_at", "group", "mean"],
+        ["source", "model", "extracted_at", "figure_type", "y_axis", "scale",
+         "group", "mean"],
     ]
 
 
@@ -350,6 +351,30 @@ def test_results_and_exports_name_the_model_and_the_time(app, fake_anthropic):
     export = at.dataframe[-1].value
     assert export["model"].tolist() == ["claude-sonnet-5-5"]
     assert export["extracted_at"].tolist() == [result["extracted_at"]]
+
+
+def test_export_rows_carry_the_axis_and_a_row_cannot_overwrite_them(
+    app, fake_anthropic,
+):
+    """Units and scale were only in the JSON export; a row key named "model"
+    replaced the record of which model read the figure."""
+    fake_anthropic.answer["data"] = [
+        {"group": "A", "mean": 1.5, "model": "made up", "uncertain": []},
+    ]
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    export = at.dataframe[-1].value
+    assert export["y_axis"].tolist() == ["mg/L"]
+    assert export["scale"].tolist() == ["linear"]
+    assert export["model"].tolist() == ["claude-sonnet-5-5"]
+
+
+def test_failed_figures_are_named_in_the_export_tab(app, fake_anthropic):
+    fake_anthropic.answer = "not an object"
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    assert any("1 figure(s) failed" in w.value and "plot.png" in w.value
+               for w in at.warning)
 
 
 def test_heavy_work_leaves_a_memory_line_in_the_log(app, fake_anthropic, monkeypatch):
