@@ -16,9 +16,11 @@ from typing import Any, Protocol
 
 from PIL import Image
 
+# "Fig 1" without a full stop is PLOS's style; "Figure S1" and "Table S2"
+# number supplementary items.
 CAPTION_RE = re.compile(
-    r"^(Supplementary\s+)?Fig(ure|\.)\s*\d"
-    r"|^(Supplementary\s+)?Table\s*\d"
+    r"^(Supplementary\s+)?Fig(ure|\.)?\s*S?\d"
+    r"|^(Supplementary\s+)?Table\s*S?\d"
     r"|^Suppl\.?\s+Fig",
     re.IGNORECASE,
 )
@@ -29,7 +31,7 @@ CAPTION_RE = re.compile(
 # caption.  On the 204 PMC validation papers this dropped 123 blocks, every
 # one of them a sentence.
 _LABEL_RE = re.compile(
-    r"(Supplementary\s+|Suppl\.?\s+)?(Fig(?:ure|\.)?|Table)\s*\d+[A-Za-z]?\s*",
+    r"(Supplementary\s+|Suppl\.?\s+)?(Fig(?:ure|\.)?|Table)\s*S?\d+[A-Za-z]?\s*",
     re.IGNORECASE,
 )
 _SENTENCE_TAIL_RE = re.compile(
@@ -120,14 +122,14 @@ def open_pdf(source: bytes | str | Path) -> PdfDocument:
 
 def label_from_caption(text: str) -> str | None:
     m = re.match(
-        r"(Supplementary\s+|Suppl\.?\s+)?(Fig(?:ure|\.)?|Table)\s*(\d+)",
+        r"(Supplementary\s+|Suppl\.?\s+)?(Fig(?:ure|\.)?|Table)\s*(S?)(\d+)",
         text.strip(), re.IGNORECASE,
     )
     if not m:
         return None
     prefix = "Suppl_" if m.group(1) else ""
     kind = "Fig" if "fig" in m.group(2).lower() else "Table"
-    return f"{prefix}{kind}_{m.group(3)}"
+    return f"{prefix}{kind}_{m.group(3).upper()}{m.group(4)}"
 
 
 def reads_as_running_text(text: str) -> bool:

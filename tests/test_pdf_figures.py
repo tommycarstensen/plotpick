@@ -2,7 +2,7 @@
 
 import pytest
 
-from pdf_figures import CAPTION_RE, reads_as_running_text
+from pdf_figures import CAPTION_RE, label_from_caption, reads_as_running_text
 
 
 class TestCaptionRegex:
@@ -23,9 +23,24 @@ class TestCaptionRegex:
         "Supplementary Fig. 3",
         "Supplementary Table 2",
         "Suppl. Fig 1",
+        "Fig 1. Study flow",
+        "Fig 2",
+        "Figure S1. Sensitivity analysis",
+        "Fig. S3",
+        "Table S2 Baseline characteristics",
     ])
     def test_caption_matches(self, text):
         assert CAPTION_RE.match(text), f"Should match: {text!r}"
+
+    @pytest.mark.parametrize(("text", "label"), [
+        ("Fig 1. Study flow", "Fig_1"),
+        ("Figure 12 - Doses", "Fig_12"),
+        ("Figure S1. Sensitivity analysis", "Fig_S1"),
+        ("Supplementary Table 2", "Suppl_Table_2"),
+        ("table s4 Outcomes", "Table_S4"),
+    ])
+    def test_labels(self, text, label):
+        assert label_from_caption(text) == label
 
     @pytest.mark.parametrize("text", [
         "The figure shows",
@@ -36,6 +51,8 @@ class TestCaptionRegex:
         "Methods",
         "",
         "1. Introduction",
+        "Figures 1 and 2 show",
+        "Figs 1-3",
     ])
     def test_caption_rejects(self, text):
         assert not CAPTION_RE.match(text), f"Should not match: {text!r}"
@@ -59,6 +76,8 @@ class TestRunningText:
         "Supplementary Figure 10, the therapeutic impact",
         "Table 2). These results highlight",
         "Figure 4.",
+        "Fig 2 shows the trend over time",
+        "Table S3 summarizes the sensitivity analyses",
     ])
     def test_sentences(self, text):
         assert reads_as_running_text(text), f"Should be a sentence: {text!r}"
@@ -66,6 +85,8 @@ class TestRunningText:
     @pytest.mark.parametrize("text", [
         "Table 1",
         "Figure 12",
+        "Fig 1. Flow of participants through the trial.",
+        "Figure S1. Sensitivity analysis",
         "Table 2. Cont.",
         "Table 1. Demographic and clinical characteristics",
         "Table 3: results",
