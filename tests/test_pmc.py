@@ -7,26 +7,48 @@ import requests
 import pmc
 
 
+def ids(text: str) -> list[str]:
+    return pmc.parse_pubmed_ids(text)[0]
+
+
 def test_parses_bare_pmids_and_pmcids_with_any_separator():
     text = " 12345678, pmc7654321;23456789\nPMC111 "
-    assert pmc.parse_pubmed_ids(text) == [
-        "12345678", "PMC7654321", "23456789", "PMC111",
-    ]
+    assert ids(text) == ["12345678", "PMC7654321", "23456789", "PMC111"]
 
 
-def test_parses_pubmed_and_pmc_urls():
+def test_parses_pubmed_pmc_and_europe_pmc_urls():
     text = (
         "https://pubmed.ncbi.nlm.nih.gov/31452104/ "
         "https://pmc.ncbi.nlm.nih.gov/articles/PMC6711232/ "
-        "https://www.ncbi.nlm.nih.gov/pmc/articles/pmc6711233/"
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/pmc6711233/ "
+        "https://www.ncbi.nlm.nih.gov/pubmed/31452105 "
+        "https://europepmc.org/article/MED/31452106 "
+        "https://europepmc.org/article/PMC/PMC6711234"
     )
-    assert pmc.parse_pubmed_ids(text) == ["31452104", "PMC6711232", "PMC6711233"]
+    assert ids(text) == [
+        "31452104", "PMC6711232", "PMC6711233", "31452105", "31452106",
+        "PMC6711234",
+    ]
 
 
-def test_ignores_words_and_short_numbers():
+def test_a_spaced_pmcid_is_not_read_as_a_pmid():
+    """"PMC 6711232" was read as the PMID 6711232, a different article."""
+    assert ids("PMC 6711232") == ["PMC6711232"]
+
+
+def test_labels_brackets_and_punctuation_are_allowed():
+    text = "PMID:31452104 PMID: 31452105 31452106. (31452107) [PMC6711232],"
+    assert ids(text) == [
+        "31452104", "31452105", "31452106", "31452107", "PMC6711232",
+    ]
+
+
+def test_repeats_are_dropped_and_the_rest_reported():
     """A DOI, a word or a four-digit year is not a PubMed identifier."""
-    assert pmc.parse_pubmed_ids("2019 trial 10.1000/xyz PMC") == []
-    assert pmc.parse_pubmed_ids("   ") == []
+    assert pmc.parse_pubmed_ids("31452104 2019 trial 31452104 10.1000/xyz") == (
+        ["31452104"], ["2019", "trial", "10.1000/xyz"],
+    )
+    assert pmc.parse_pubmed_ids("   ") == ([], [])
 
 
 class FakeIdconv:

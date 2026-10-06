@@ -370,7 +370,11 @@ with st.sidebar:
     )
 
     if fetch_pubmed and pubmed_input.strip():
-        raw_ids = parse_pubmed_ids(pubmed_input)
+        raw_ids, ignored = parse_pubmed_ids(pubmed_input)
+        if ignored:
+            st.warning(
+                f"Not a PubMed ID or PMCID, so ignored: {', '.join(ignored)}"
+            )
         if not raw_ids:
             st.error("No valid PubMed IDs found in input.")
         else:

@@ -21,38 +21,54 @@ IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
 _IDCONV_BATCH = 200
 
 
-def parse_pubmed_ids(text: str) -> list[str]:
-    """Extract PubMed IDs or PMCIDs from free-text input.
+# Article URLs: PMC (current and old address) and Europe PMC name the PMCID;
+# PubMed (current and old address) and Europe PMC name the PMID.
+_URL_PMCID = re.compile(r"(PMC\d+)", re.IGNORECASE)
+_URL_PMID = re.compile(
+    r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|ncbi\.nlm\.nih\.gov/pubmed/"
+    r"|europepmc\.org/(?:article|abstract)/MED/)(\d+)",
+    re.IGNORECASE,
+)
 
-    Accepts: PMID (numeric), PMC + digits, or full PubMed/PMC URLs,
-    separated by commas, semicolons or white space.
-    Returns normalised IDs like '12345678' or 'PMC1234567'.
+
+def _read_token(token: str) -> str | None:
+    """One token as a PMID or PMCID, or None."""
+    if "/" in token:
+        m = _URL_PMCID.search(token) or _URL_PMID.search(token)
+        return m.group(1).upper() if m else None
+    if re.fullmatch(r"PMC\d+", token, re.IGNORECASE):
+        return token.upper()
+    if re.fullmatch(r"\d{5,12}", token):
+        return token
+    return None
+
+
+def parse_pubmed_ids(text: str) -> tuple[list[str], list[str]]:
+    """The PubMed IDs and PMCIDs in free text, and the tokens that were neither.
+
+    Accepts PMIDs ("31452104", "PMID: 31452104"), PMCIDs ("PMC6711232",
+    "PMC 6711232") and PubMed, PMC and Europe PMC article URLs, separated by
+    commas, semicolons or white space, in brackets or followed by a full stop.
+    Returns IDs like '31452104' or 'PMC6711232' in order and without repeats,
+    and the tokens it could not read, so that the caller can say what it
+    ignored.
     """
+    # Join what white space would split.  "PMC 6711232" was read as the
+    # PMID 6711232, a different article.
+    text = re.sub(r"\b(PMC)\s+(\d)", r"\1\2", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bPMID\s*:?\s*(\d)", r"\1", text, flags=re.IGNORECASE)
     ids: list[str] = []
-    for token in re.split(r"[,;\s]+", text.strip()):
+    ignored: list[str] = []
+    for raw in re.split(r"[,;\s]+", text.strip()):
+        token = raw.strip("[](){}<>.:'\"")
         if not token:
             continue
-        # Full URL: https://pubmed.ncbi.nlm.nih.gov/12345678/
-        m = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", token)
-        if m:
-            ids.append(m.group(1))
-            continue
-        # Full URL: https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/ or the
-        # older https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567/
-        m = re.search(r"articles/(PMC\d+)", token, re.IGNORECASE)
-        if m:
-            ids.append(m.group(1).upper())
-            continue
-        # Bare PMCID
-        m = re.fullmatch(r"(PMC\d+)", token, re.IGNORECASE)
-        if m:
-            ids.append(m.group(1).upper())
-            continue
-        # Bare PMID (numeric)
-        if re.fullmatch(r"\d{5,12}", token):
-            ids.append(token)
-            continue
-    return ids
+        found = _read_token(token)
+        if found is None:
+            ignored.append(raw)
+        elif found not in ids:
+            ids.append(found)
+    return ids, ignored
 
 
 def pmids_to_pmcids(pmids: list[str]) -> dict[str, str | None]:
