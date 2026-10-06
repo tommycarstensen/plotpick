@@ -53,6 +53,9 @@ class TestCaptionRegex:
         "1. Introduction",
         "Figures 1 and 2 show",
         "Figs 1-3",
+        "FIG4-deficient mice show",
+        "Fig4/Vac14 mutants",
+        "FIG4: a phosphoinositide phosphatase",
     ])
     def test_caption_rejects(self, text):
         assert not CAPTION_RE.match(text), f"Should not match: {text!r}"

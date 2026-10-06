@@ -17,9 +17,10 @@ from typing import Any, Protocol
 from PIL import Image
 
 # "Fig 1" without a full stop is PLOS's style; "Figure S1" and "Table S2"
-# number supplementary items.
+# number supplementary items.  A bare "Fig" needs a space before its number,
+# so that the gene symbol FIG4 ("FIG4-deficient mice") is not a caption.
 CAPTION_RE = re.compile(
-    r"^(Supplementary\s+)?Fig(ure|\.)?\s*S?\d"
+    r"^(Supplementary\s+)?(?:Fig(?:ure|\.)\s*|Fig\s+)S?\d"
     r"|^(Supplementary\s+)?Table\s*S?\d"
     r"|^Suppl\.?\s+Fig",
     re.IGNORECASE,
