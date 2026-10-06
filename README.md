@@ -68,7 +68,7 @@ flowchart TD
 
 Pick the model in the sidebar. Sonnet and Haiku run on the key the app is configured with; Opus 5.5 runs only on a key the visitor pastes in, which appears as a key box when Opus is selected.
 
-| Model | Model ID | Key | ChartX numeric F1 | PlotQA numeric F1 |
+| Model | Model ID | Key | ChartX numeric F1 | PlotQA best-series numeric F1 |
 |-------|----------|-----|-------------------|-------------------|
 | Sonnet 5.5 (default) | `claude-sonnet-5-5` | app key | not benchmarked | not benchmarked |
 | Haiku 4.5 | `claude-haiku-4-5-20251001` | app key | 88.7% | 70.2% |
@@ -97,7 +97,7 @@ The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `ass
 What the benchmark does and does not show:
 
 - It scores nine vision-language models and DePlot, a dedicated chart-to-table model, on six chart types of the ChartX validation split (synthetic charts) and six of the models on a PlotQA subset.
-- On ChartX all nine models score above DePlot in aggregate (79.1-96.0% against 74.3%), mostly because of box plots, where DePlot returns one value per box. On the other five chart types the four strongest models still lead DePlot and the two weakest do not.
+- On ChartX all nine models score above DePlot in aggregate (79.1-96.0% against 74.3%), mostly because of box plots, where DePlot returns one value per box. Pooled over the other five chart types, seven of the nine models keep a lead over DePlot and the two weakest do not; the four strongest lead it on every one of those types.
 - On the PlotQA subset (529 charts from the first 1,000 entries of its test split, the ones a scoring error left in, 427 of them horizontal bar charts, scored leniently on the best-matching series of each reply) DePlot scores 87.0%. Two of the six models are level with it or slightly above it (89.2% and 89.0%) and four fall below it (83.2% down to 56.7%). General-purpose models are not uniformly better than DePlot, which was trained on PlotQA.
 - It uses a two-sentence prompt, not this app's structured prompt, and it scores the numbers only, not the group, timepoint, error-bar or group-size fields the app returns.
 - The app's default model, Sonnet 5.5, and Opus 5.5 were not benchmarked.
