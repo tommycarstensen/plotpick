@@ -90,19 +90,40 @@ def sheet_names(labels: list[str]) -> dict[str, str]:
 
 
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
-    """A workbook with all rows on one sheet and one sheet per source."""
+    """A workbook with all rows on one sheet and one sheet per source.
+
+    Text is written as text: openpyxl stores a string that starts with "=" as
+    a formula, so a group label such as "=A1+1" from the model or a file
+    name would be evaluated when the workbook is opened.
+    """
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="All")
         sources = df["source"].astype(str)
         for label, sheet in sheet_names(list(sources.unique())).items():
             df[sources == label].to_excel(writer, index=False, sheet_name=sheet)
+        for worksheet in writer.book.worksheets:
+            for row in worksheet.iter_rows():
+                for cell in row:
+                    if cell.data_type == "f":
+                        cell.data_type = "s"
     return buf.getvalue()
+
+
+LATEX_NOTE = (
+    "% PlotPick output. Needs \\usepackage{booktabs}. Characters such as\n"
+    "% Greek letters or >= signs need xelatex or lualatex, or pdflatex with\n"
+    "% \\usepackage{newunicodechar} and a definition for each.\n"
+)
 
 
 def dataframe_to_latex(df: pd.DataFrame) -> str:
     """The table as a LaTeX tabular, with special characters escaped.
 
-    The rules come from the booktabs package.
+    Numbers keep up to ten significant digits: pandas' default printed 1e-7
+    as 0.000000, and a group size in a column with a gap as 12.000000.
     """
-    return df.to_latex(index=False, escape=True, na_rep="")
+    return LATEX_NOTE + df.to_latex(
+        index=False, escape=True, na_rep="",
+        float_format=lambda value: format(value, ".10g"),
+    )

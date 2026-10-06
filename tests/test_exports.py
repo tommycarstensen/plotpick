@@ -124,3 +124,21 @@ def test_latex_compiles(tmp_path):
         cwd=tmp_path, capture_output=True, text=True, check=False,
     )
     assert run.returncode == 0, run.stdout[-2000:]
+
+
+def test_latex_keeps_small_numbers_and_whole_group_sizes():
+    """pandas printed 1e-7 as 0.000000 and 12 as 12.000000."""
+    latex = dataframe_to_latex(
+        pd.DataFrame({"source": ["a", "b"], "n": [12.0, None], "p": [1e-7, 0.5]})
+    )
+    assert "a & 12 & 1e-07 \\\\" in latex
+    assert "0.000000" not in latex
+
+
+def test_excel_writes_text_that_starts_with_equals_as_text():
+    """openpyxl stores "=A1+1" as a formula, evaluated when the file opens."""
+    df = pd.DataFrame({"source": ["a"], "group": ["=A1+1"]})
+    workbook = openpyxl.load_workbook(io.BytesIO(dataframe_to_excel(df)))
+    for sheet in workbook.worksheets:
+        cell = sheet["B2"]
+        assert (cell.value, cell.data_type) == ("=A1+1", "s")
