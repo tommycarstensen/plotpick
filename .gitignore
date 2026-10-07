@@ -9,3 +9,8 @@ validation/tables/
 validation/figures/
 validation/results/
 validation/.pdf_index.json
+
+# Package build output (pip wheel ., pip install .)
+build/
+dist/
+*.egg-info/

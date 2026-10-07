@@ -11,8 +11,8 @@ from typing import Any
 
 import anthropic
 
-from figure_images import image_to_base64
-from models import ExtractionError, reply_text
+from plotpick.figure_images import image_to_base64
+from plotpick.models import ExtractionError, reply_text
 
 MAX_TOKENS = 16384
 

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from models import (
+from plotpick.models import (
     DEFAULT_MODEL,
     ENV_VAR,
     MODEL_LABELS,

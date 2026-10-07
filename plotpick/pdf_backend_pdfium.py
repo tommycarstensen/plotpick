@@ -36,7 +36,7 @@ import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from PIL import Image
 
-from pdf_figures import PdfError, Rect
+from plotpick.pdf_figures import PdfError, Rect
 
 # MuPDF's text-device thresholds, in font sizes.
 PARAGRAPH_DIST = 1.5   # baseline jump that starts a new block

@@ -4,7 +4,7 @@ in the PMC Cloud Service."""
 import pytest
 import requests
 
-import pmc
+from plotpick import pmc
 
 
 def ids(text: str) -> list[str]:

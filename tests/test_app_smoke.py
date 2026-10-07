@@ -20,8 +20,8 @@ import anthropic
 import pytest
 from PIL import Image
 
-import figure_images
-import process_memory
+from plotpick import figure_images
+from plotpick import process_memory
 
 APP = Path(__file__).resolve().parent.parent / "streamlit_app.py"
 sys.path.insert(0, str(APP.parent))

@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
-import process_memory
-from process_memory import log_memory, resident_mb, return_freed_memory
+from plotpick import process_memory
+from plotpick.process_memory import log_memory, resident_mb, return_freed_memory
 
 
 @pytest.fixture

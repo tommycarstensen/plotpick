@@ -38,8 +38,8 @@ from typing import Protocol
 
 from PIL import Image
 
-from pdf_figures import PdfError, find_figures, open_pdf
-from process_memory import log_memory, return_freed_memory
+from plotpick.pdf_figures import PdfError, find_figures, open_pdf
+from plotpick.process_memory import log_memory, return_freed_memory
 
 MAX_API_WIDTH = 2000  # Max width for API images (balance quality vs tokens)
 

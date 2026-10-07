@@ -36,7 +36,7 @@ streamlit run streamlit_app.py
 Run what continuous integration runs (the tests need no API key):
 
 ```bash
-pytest tests/ -v && ruff check . && pycodestyle . && pyright models.py streamlit_app.py pdf_figures.py figure_images.py process_memory.py pdf_backend_pdfium.py pmc.py exports.py extraction.py tests
+pytest tests/ -v && ruff check . && pycodestyle . && pyright streamlit_app.py plotpick tests
 ```
 
 ## Pull requests

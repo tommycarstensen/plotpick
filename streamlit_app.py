@@ -25,16 +25,16 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from exports import dataframe_to_excel, dataframe_to_latex, dataframe_to_r
-from extraction import extract_from_image
-from figure_images import (
+from plotpick.exports import dataframe_to_excel, dataframe_to_latex, dataframe_to_r
+from plotpick.extraction import extract_from_image
+from plotpick.figure_images import (
     Figure,
     held_summary,
     pdf_to_figures,
     sync_uploads,
     with_distinct_labels,
 )
-from models import (
+from plotpick.models import (
     DEFAULT_MODEL,
     MODEL_LABELS,
     MODELS,
@@ -46,8 +46,8 @@ from models import (
     resolve_api_key,
     shared_key_from_environment,
 )
-from pmc import download_pmc_pdf, parse_pubmed_ids, pmids_to_pmcids
-from process_memory import log_memory
+from plotpick.pmc import download_pmc_pdf, parse_pubmed_ids, pmids_to_pmcids
+from plotpick.process_memory import log_memory
 
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile

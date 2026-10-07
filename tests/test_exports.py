@@ -15,7 +15,7 @@ import openpyxl
 import pandas as pd
 import pytest
 
-from exports import (
+from plotpick.exports import (
     SHEET_MAX,
     dataframe_to_excel,
     dataframe_to_latex,

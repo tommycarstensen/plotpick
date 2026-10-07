@@ -9,8 +9,8 @@ from contextlib import contextmanager
 import pytest
 from PIL import Image
 
-import pdf_backend_pdfium
-from pdf_figures import PdfError, PdfPage, Rect, find_figures, open_pdf
+from plotpick import pdf_backend_pdfium
+from plotpick.pdf_figures import PdfError, PdfPage, Rect, find_figures, open_pdf
 from tests.pdf_builder import (
     PAGE_H,
     PAGE_W,

@@ -19,6 +19,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt pytest
       - run: pytest tests/ -v
+      # The library installs on its own, without the interface's dependencies.
+      - run: |
+          python -m venv /tmp/libonly
+          /tmp/libonly/bin/pip install .
+          cd /tmp && /tmp/libonly/bin/python -c "import plotpick.figure_images, plotpick.extraction, plotpick.exports, plotpick.pmc"
 
   lint:
     runs-on: ubuntu-24.04
@@ -30,7 +35,7 @@ jobs:
       - run: pip install -r requirements.txt pytest ruff pycodestyle pyright
       - run: ruff check .
       - run: pycodestyle .
-      - run: pyright models.py streamlit_app.py pdf_figures.py figure_images.py process_memory.py pdf_backend_pdfium.py pmc.py exports.py extraction.py tests
+      - run: pyright streamlit_app.py plotpick tests
 
   exports:
     # The R script must run in R and the LaTeX must compile; neither tool is

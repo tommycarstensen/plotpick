@@ -117,7 +117,7 @@ def open_pdf(source: bytes | str | Path) -> PdfDocument:
     PDF; so do the document and its pages for a part they cannot read.
     """
     # Imported here because the backend imports Rect from this module.
-    from pdf_backend_pdfium import Document
+    from plotpick.pdf_backend_pdfium import Document
     return Document(source)
 
 

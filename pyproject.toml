@@ -1,0 +1,44 @@
+# The plotpick package: PlotPick's figure detection, extraction step, PubMed
+# Central access and exports, without the Streamlit interface.
+#
+#     pip install .            the library
+#     pip install ".[app]"     the library and what streamlit_app.py needs
+#
+# Streamlit Community Cloud installs from requirements.txt, which it reads
+# before this file, and runs streamlit_app.py from the repository root, where
+# the package is importable without installing it.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plotpick"
+version = "0.2.0.dev0"
+description = "Batch extraction of numerical data from scientific figures with vision-language models"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Tommy Carstensen" }]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40",
+    "jinja2>=3.1",
+    "openpyxl>=3.1",
+    "pandas>=2.0",
+    "Pillow>=10.0",
+    "pypdfium2>=5,<6",
+    "requests>=2.27",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.65,<2", "tabulate>=0.9"]
+dev = ["pytest", "ruff", "pycodestyle", "pyright"]
+
+[project.urls]
+Homepage = "https://plotpick.streamlit.app/"
+Repository = "https://github.com/tommycarstensen/plotpick"
+Preprint = "https://arxiv.org/abs/2605.06021"
+
+[tool.setuptools]
+packages = ["plotpick"]

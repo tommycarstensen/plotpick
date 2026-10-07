@@ -2,7 +2,7 @@
 
 import pytest
 
-from pdf_figures import CAPTION_RE, label_from_caption, reads_as_running_text
+from plotpick.pdf_figures import CAPTION_RE, label_from_caption, reads_as_running_text
 
 
 class TestCaptionRegex:

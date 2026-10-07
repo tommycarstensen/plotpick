@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from extraction import SYSTEM_PROMPT, USER_PROMPT, parse_reply
-from models import ExtractionError
+from plotpick.extraction import SYSTEM_PROMPT, USER_PROMPT, parse_reply
+from plotpick.models import ExtractionError
 
 REPLY = {"figure_type": "bar chart", "data": [{"group": "A", "mean": 1.5}]}
 

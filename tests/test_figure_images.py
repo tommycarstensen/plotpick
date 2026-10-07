@@ -8,7 +8,7 @@ import zipfile
 import pytest
 from PIL import Image
 
-from figure_images import (
+from plotpick.figure_images import (
     MAX_API_WIDTH,
     MAX_DISPLAY_WIDTH,
     Figure,
