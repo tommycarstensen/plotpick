@@ -66,6 +66,26 @@ flowchart TD
 
 Without a key the app still runs: uploads and PubMed fetches are read, and the figures and tables are detected, cropped and shown in the gallery. Only the two Extract buttons need a key, and the sidebar says so.
 
+## Using the library
+
+Everything except the interface is the Python package `plotpick`, which installs on its own with `pip install .` (add `".[app]"` for the interface's dependencies). Finding the figures in a PDF and transcribing them, without Streamlit:
+
+```python
+from pathlib import Path
+
+import anthropic
+
+from plotpick.extraction import extract_from_image
+from plotpick.figure_images import pdf_to_figures
+
+client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+for figure in pdf_to_figures(Path("paper.pdf").read_bytes(), "paper.pdf"):
+    result = extract_from_image(client, figure.png, "claude-haiku-4-5-20251001")
+    print(figure.label, result["data"])
+```
+
+The package's modules are listed in `plotpick/__init__.py`. `plotpick.pmc` reads PubMed identifiers and fetches open-access PDFs, and `plotpick.exports` writes the R, Excel and LaTeX exports.
+
 ## Tests
 
 The tests need no API key: the Anthropic client and the PubMed Central service are replaced by fakes. Continuous integration runs them on Python 3.12 and 3.13, with ruff, pycodestyle and pyright:

@@ -8,7 +8,7 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 - PDFs are read with pypdfium2 (BSD-3-Clause or Apache-2.0); PyMuPDF (AGPL) is no longer a dependency. A figure's region is bounded anew, and a sentence that opens with a label ("Table 1 summarizes ...") is no longer taken for a caption.
 - Captions in the style "Fig 1" and supplementary "Figure S1" or "Table S2" are found; the gene symbol FIG4 is not taken for a caption.
-- The prompt, the model call and the reading of the reply moved to `extraction.py`, which does not import Streamlit.
+- Everything except the interface is now the installable package `plotpick` (`pip install .`; `pyproject.toml`), and `streamlit_app.py` imports it; the prompt, the model call and the reading of the reply are its `extraction` module.
 - PubMed input also accepts "PMID: 123", "PMC 123", IDs in brackets or followed by a full stop, and Europe PMC URLs; what cannot be read is listed.
 - `requirements.txt` declares jinja2 and caps Streamlit and pypdfium2 below their next major version.
 - Claude Sonnet 5.5 is the default model. Sonnet and Claude Haiku 4.5 run on the app's key; Claude Opus 5.5 runs only on a key the user pastes in.
