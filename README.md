@@ -144,7 +144,7 @@ Hovering a disabled button shows the specific reason.
 
 ## Benchmarks
 
-"The paper" below is the companion preprint, [arXiv:2605.06021](https://arxiv.org/abs/2605.06021). The benchmark behind it lives in its own repository, [plotpick-validation](https://github.com/tommycarstensen/plotpick-validation): the runners, the per-item results and the scripts that regenerate every table and figure. Nothing in this repository runs it.
+"The paper" below is the companion preprint, [arXiv:2605.06021](https://arxiv.org/abs/2605.06021). The benchmark behind it lives in its own repository, [plotpick-validation](https://github.com/tommycarstensen/plotpick-validation): the runners, the per-item results and the scripts that regenerate every table and figure. The per-item results are also on the Hugging Face Hub as the dataset [tommycarstensen/plotpick-validation](https://huggingface.co/datasets/tommycarstensen/plotpick-validation), linked to the [paper's page](https://huggingface.co/papers/2605.06021) there: one row per chart and system, with the ground truth, the numbers the system returned and its scores, and no chart images. Nothing in this repository runs it.
 
 The two figures in the app's Benchmarks panel (`assets/chartx_by_type.png`, `assets/chartx_heatmap.png`) are the paper's Figures 1 and 2, written by `benchmarks/plot_chartx_validation.py --out-dir <this repo>/assets` in that repository.
 
