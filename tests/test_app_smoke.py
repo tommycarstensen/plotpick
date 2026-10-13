@@ -20,6 +20,8 @@ import anthropic
 import pytest
 from PIL import Image
 
+from plotpick import __version__
+from plotpick import citation
 from plotpick import figure_images
 from plotpick import process_memory
 
@@ -414,6 +416,43 @@ def test_failed_figures_are_named_in_the_export_tab(app, fake_anthropic):
     assert not at.exception
     assert any("1 figure(s) failed" in w.value and "plot.png" in w.value
                for w in at.warning)
+
+
+def expander(block, label: str):
+    (found,) = [e for e in block.expander if e.label == label]
+    return found
+
+
+def test_the_sidebar_offers_the_reference_without_a_gate(app):
+    """Citing is asked for in a panel to open, never as a condition of use."""
+    at = app().run()
+    assert not at.exception
+    codes = [c.value for c in expander(at.sidebar, "How to cite PlotPick").code]
+    assert codes == [citation.REFERENCE, citation.BIBTEX]
+    assert any(c.value.startswith(f"PlotPick {__version__}")
+               for c in at.sidebar.caption)
+    assert any("Upload files" in i.value for i in at.info)
+
+
+def test_the_export_tab_has_a_methods_sentence_and_exports_cite(
+    app, fake_anthropic,
+):
+    at = extract_all(upload(app().run(), "plot.png", png_file(40, 30)))
+    assert not at.exception
+    (result,) = at.session_state.results.values()
+    panel = expander(at, "How to cite and report PlotPick")
+    sentence = panel.code[0].value
+    assert f"using claude-sonnet-5-5 on {result['extracted_at'][:10]};" in sentence
+    assert "[say who checked" in sentence
+    (markdown,) = [c.value for c in at.code if c.value.startswith("| source")]
+    assert markdown.rstrip().endswith("check it before use.*")
+    assert citation.REFERENCE in markdown
+
+    next(c for c in at.checkbox if c.label == "JSON").check().run()
+    (exported,) = [c.value for c in at.code if c.value.startswith("{")]
+    parsed = json.loads(exported)
+    assert parsed["provenance"]["models"] == ["claude-sonnet-5-5"]
+    assert parsed["results"] == at.session_state.results
 
 
 def test_heavy_work_leaves_a_memory_line_in_the_log(app, fake_anthropic, monkeypatch):

@@ -25,7 +25,14 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from plotpick.exports import dataframe_to_excel, dataframe_to_latex, dataframe_to_r
+from plotpick import citation
+from plotpick.exports import (
+    dataframe_to_excel,
+    dataframe_to_latex,
+    dataframe_to_markdown,
+    dataframe_to_r,
+    results_to_json,
+)
 from plotpick.extraction import extract_from_image
 from plotpick.figure_images import (
     Figure,
@@ -142,6 +149,31 @@ def _one_type_per_column(df: pd.DataFrame) -> pd.DataFrame:
         }:
             shown[name] = [str(value) if present else value for value, present in cells]
     return shown
+
+
+# ---------------------------------------------------------------------------
+# Helpers -- citation
+# ---------------------------------------------------------------------------
+def _citation_panel(sentence: str = "") -> None:
+    """The reference and BibTeX to copy, and a methods sentence if given.
+
+    Always in an expander, never a gate or a pop-up: PlotPick is MIT licensed
+    and citing it is not a condition of using it.
+    """
+    if sentence:
+        st.markdown(
+            "For a methods section, filled in from this session; the part in "
+            "brackets is yours to complete:"
+        )
+        st.code(sentence, language=None, wrap_lines=True)
+    st.markdown("If PlotPick helped your work, please cite:")
+    st.code(citation.REFERENCE, language=None, wrap_lines=True)
+    st.code(citation.BIBTEX, language="bibtex", wrap_lines=True)
+    st.caption(
+        "A review reports the tools it used to collect data (PRISMA 2020 "
+        "item 9): name PlotPick and its version, the model and the date. "
+        "Every export records them. PlotPick does not record who copies this."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +402,10 @@ with st.sidebar:
             "real biomedical figures. Check every extracted value against "
             "its figure."
         )
+
+    with st.expander("How to cite PlotPick"):
+        _citation_panel()
+    st.caption(f"PlotPick {citation.build()}")
 
 
 # ---------------------------------------------------------------------------
@@ -650,6 +686,21 @@ with tab_export:
                 _one_type_per_column(combined), width="stretch", hide_index=True,
             )
 
+            # What a review reports about the run: written into every export
+            # but CSV, and offered as a methods sentence to copy.
+            about = citation.provenance({
+                label: result for label, result in st.session_state.results.items()
+                if "error" not in result
+            })
+            about_lines = citation.about_lines(about)
+            st.caption(
+                "Reporting this in a review? PRISMA 2020 item 9 asks for the "
+                "tool, its version and the date; every export below records "
+                "them."
+            )
+            with st.expander("How to cite and report PlotPick"):
+                _citation_panel(citation.methods_sentence(about))
+
             # Format picker (2 rows of 3 -- stacks on mobile via CSS)
             fmt_row1 = st.columns(3)
             with fmt_row1[0]:
@@ -669,7 +720,7 @@ with tab_export:
             timestamp = f"{datetime.now():%Y%m%d_%H%M}"
 
             if want_md:
-                md_text = combined.to_markdown(index=False)
+                md_text = dataframe_to_markdown(combined, about_lines)
                 st.code(md_text, language="markdown")
                 st.download_button(
                     "\U0001f4e5 Download Markdown",
@@ -681,7 +732,7 @@ with tab_export:
             if want_xlsx:
                 st.download_button(
                     "\U0001f4e5 Download Excel",
-                    data=dataframe_to_excel(combined),
+                    data=dataframe_to_excel(combined, about_lines),
                     file_name=f"plotpick_{timestamp}.xlsx",
                     mime=(
                         "application/vnd.openxmlformats-"
@@ -699,7 +750,7 @@ with tab_export:
                 )
 
             if want_latex:
-                latex_text = dataframe_to_latex(combined)
+                latex_text = dataframe_to_latex(combined, about_lines)
                 st.code(latex_text, language="latex")
                 st.download_button(
                     "\U0001f4e5 Download LaTeX",
@@ -709,10 +760,8 @@ with tab_export:
                 )
 
             if want_json:
-                # Include full results with metadata
-                full_json = json.dumps(
-                    st.session_state.results, indent=2, ensure_ascii=False,
-                )
+                # Every figure's full result, failed ones included.
+                full_json = results_to_json(st.session_state.results, about)
                 st.code(full_json, language="json")
                 st.download_button(
                     "\U0001f4e5 Download JSON",
@@ -722,7 +771,7 @@ with tab_export:
                 )
 
             if want_r:
-                r_script = dataframe_to_r(combined)
+                r_script = dataframe_to_r(combined, about_lines)
                 st.code(r_script, language="r")
                 st.download_button(
                     "\U0001f4e5 Download R script",

@@ -34,14 +34,14 @@ REFERENCE = (
 )
 BIBTEX = (
     "@misc{carstensen2026plotpick,\n"
-    "  author        = {Carstensen, Tommy},\n"
-    "  title         = {{PlotPick}: {AI}-powered batch extraction of numerical"
+    "  author = {Carstensen, Tommy},\n"
+    "  title = {{PlotPick}: {AI}-powered batch extraction of numerical"
     " data from scientific figures},\n"
-    "  year          = {2026},\n"
-    f"  eprint        = {{{ARXIV_ID}}},\n"
+    "  year = {2026},\n"
+    f"  eprint = {{{ARXIV_ID}}},\n"
     "  archivePrefix = {arXiv},\n"
-    f"  doi           = {{{DOI}}},\n"
-    f"  url           = {{{DOI_URL}}},\n"
+    f"  doi = {{{DOI}}},\n"
+    f"  url = {{{DOI_URL}}},\n"
     "}"
 )
 IN_TEXT = f"Carstensen, 2026, arXiv:{ARXIV_ID}"
