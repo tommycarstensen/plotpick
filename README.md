@@ -84,7 +84,7 @@ for figure in pdf_to_figures(Path("paper.pdf").read_bytes(), "paper.pdf"):
     print(figure.label, result["data"])
 ```
 
-The package's modules are listed in `plotpick/__init__.py`. `plotpick.pmc` reads PubMed identifiers and fetches open-access PDFs, and `plotpick.exports` writes the R, Excel and LaTeX exports.
+The package's modules are listed in `plotpick/__init__.py`. `plotpick.pmc` reads PubMed identifiers and fetches open-access PDFs, `plotpick.exports` writes the Markdown, Excel, LaTeX, JSON and R exports, and `plotpick.citation` holds the reference and the provenance the exports record.
 
 ## Tests
 
@@ -109,7 +109,7 @@ PlotPick gives a first transcription; it does not replace data extraction by peo
 
 - Check every value you keep against the article, not only against the crop: a crop can miss part of a figure or table, and a figure whose caption PlotPick did not recognise is not shown at all, so compare the gallery with the article's list of figures.
 - Check the group, the timepoint, the error type (SD, SE or CI) and the units as well as the number. The benchmark behind the paper scores numbers only, not whether a value is assigned to the right group.
-- Report PlotPick as an automation tool used in data collection, as PRISMA 2020 item 9 asks ([Page et al. 2021](https://doi.org/10.1136/bmj.n71)) and as the position statement of Cochrane, the Campbell Collaboration, JBI and the Collaboration for Environmental Evidence on AI in evidence synthesis describes ([Flemyng et al. 2025](https://doi.org/10.1002/cl2.70074)): name the PlotPick release or commit, the model and the date (both are in every exported row), what it was used for, and how its output was checked.
+- Report PlotPick as an automation tool used in data collection, as PRISMA 2020 item 9 asks ([Page et al. 2021](https://doi.org/10.1136/bmj.n71)) and as the position statement of Cochrane, the Campbell Collaboration, JBI and the Collaboration for Environmental Evidence on AI in evidence synthesis describes ([Flemyng et al. 2025](https://doi.org/10.1002/cl2.70074)): name the PlotPick version, the model and the date (the model and date are in every exported row, and every export but CSV also records the version), what it was used for, and how its output was checked. The Export tab writes a methods sentence with these facts; see [Citation](#citation).
 
 ## Data handling
 
