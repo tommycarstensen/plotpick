@@ -4,6 +4,8 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
 ### Changed
 
 - The JSON export is now an object with two keys, `provenance` and `results`; the per-figure results that made up the whole file before are under `results`.

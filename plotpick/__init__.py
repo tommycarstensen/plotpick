@@ -13,4 +13,4 @@
 None of these imports Streamlit; streamlit_app.py is the interface over them.
 """
 
-__version__ = "0.2.0.dev0"
+__version__ = "0.2.0"

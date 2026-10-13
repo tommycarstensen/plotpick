@@ -2,6 +2,8 @@ cff-version: 1.2.0
 message: "If PlotPick helped your work, please cite the preprint given under preferred-citation, and give the PlotPick version, the model and the date in your methods."
 title: "PlotPick"
 type: software
+version: "0.2.0"
+date-released: "2026-10-13"
 license: MIT
 repository-code: "https://github.com/tommycarstensen/plotpick"
 url: "https://plotpick.streamlit.app/"
