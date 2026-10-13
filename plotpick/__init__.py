@@ -8,6 +8,9 @@
     models              the Claude models offered and which API key each uses
     pmc                 PubMed identifiers, the PMID-to-PMCID lookup and PDF download
     process_memory      the process's memory, logged after heavy work
+    citation            how to cite PlotPick, and what to report about a run
 
 None of these imports Streamlit; streamlit_app.py is the interface over them.
 """
+
+__version__ = "0.2.0.dev0"
