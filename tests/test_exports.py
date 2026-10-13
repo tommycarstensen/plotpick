@@ -1,4 +1,4 @@
-"""Tests for exports.py: the R, Excel and LaTeX exports.
+"""Tests for exports.py: the R, Excel, LaTeX, Markdown and JSON exports.
 
 The R script is run with Rscript and the LaTeX compiled with pdflatex when
 they are installed; the other checks run everywhere.  CI's exports job
@@ -7,6 +7,7 @@ there instead of skipping.
 """
 
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -19,12 +20,19 @@ from plotpick.exports import (
     SHEET_MAX,
     dataframe_to_excel,
     dataframe_to_latex,
+    dataframe_to_markdown,
     dataframe_to_r,
+    results_to_json,
     sheet_names,
 )
 
 ZIP_LABEL = "batch.zip/trial_2019.pdf p.3 Figure 2"
 REQUIRED = bool(os.environ.get("PLOTPICK_EXPORT_TOOLS"))
+ABOUT = [
+    "Extracted with PlotPick 0.2.0 (commit abc1234), https://example.org",
+    "Model: claude-sonnet-5-5; extracted (UTC): 2026-10-13",
+    "Please cite: Carstensen T. PlotPick. 50% #1 & {braces}_ok",
+]
 
 
 def missing(tool: str) -> bool:
@@ -142,3 +150,80 @@ def test_excel_writes_text_that_starts_with_equals_as_text():
     for sheet in workbook.worksheets:
         cell = sheet["B2"]
         assert (cell.value, cell.data_type) == ("=A1+1", "s")
+
+
+def test_r_script_carries_the_about_lines_as_comments():
+    lines = dataframe_to_r(table(), ABOUT).splitlines()
+    assert lines[2:5] == [f"# {line}" for line in ABOUT]
+    assert lines[5] == ""
+
+
+@pytest.mark.skipif(missing("Rscript"), reason="R is not installed")
+def test_r_script_with_about_lines_runs_in_r(tmp_path):
+    path = tmp_path / "plotpick.R"
+    path.write_text(dataframe_to_r(table(), ABOUT)
+                    + "stopifnot(nrow(dat) == 3)\n", encoding="utf-8")
+    run = subprocess.run(
+        ["Rscript", str(path)], capture_output=True, text=True, check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+def test_latex_carries_the_about_lines_as_comments():
+    latex = dataframe_to_latex(table(), ABOUT)
+    for line in ABOUT:
+        assert f"\n% {line}\n" in latex
+    assert latex.index(ABOUT[-1]) < latex.index("\\begin{tabular}")
+
+
+@pytest.mark.skipif(missing("pdflatex"), reason="LaTeX is not installed")
+def test_latex_with_about_lines_compiles(tmp_path):
+    (tmp_path / "table.tex").write_text(
+        "\\documentclass{article}\n\\usepackage{booktabs}\n"
+        "\\begin{document}\n"
+        + dataframe_to_latex(table().drop(columns="group"), ABOUT)
+        + "\\end{document}\n",
+        encoding="utf-8",
+    )
+    run = subprocess.run(
+        ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "table.tex"],
+        cwd=tmp_path, capture_output=True, text=True, check=False,
+    )
+    assert run.returncode == 0, run.stdout[-2000:]
+
+
+def test_markdown_puts_the_about_lines_below_the_table():
+    plain = dataframe_to_markdown(table())
+    assert plain.count("\n") == 5
+    text = dataframe_to_markdown(table(), ABOUT)
+    assert text.startswith(plain)
+    footer = text[len(plain):].split("\n\n")
+    assert [part.strip() for part in footer if part.strip()] == [
+        f"*{line}*" for line in ABOUT]
+
+
+def test_excel_puts_the_about_lines_on_a_last_sheet():
+    plain = openpyxl.load_workbook(io.BytesIO(dataframe_to_excel(table())))
+    workbook = openpyxl.load_workbook(
+        io.BytesIO(dataframe_to_excel(table(), ABOUT)))
+    assert workbook.sheetnames == [*plain.sheetnames, "About"]
+    about = workbook["About"]
+    assert [row[0] for row in about.iter_rows(values_only=True)] == ABOUT
+    assert workbook["All"].max_row == plain["All"].max_row
+
+
+def test_a_figure_labelled_about_does_not_take_the_about_sheet():
+    df = pd.DataFrame({"source": ["About", "about"], "n": [1, 2]})
+    workbook = openpyxl.load_workbook(io.BytesIO(dataframe_to_excel(df, ABOUT)))
+    assert workbook.sheetnames[-1] == "About"
+    assert len(workbook.sheetnames) == 4
+
+
+def test_json_wraps_the_results_with_their_provenance():
+    results = {"a.png": {"data": [{"group": "\u00b5g"}], "model": "m"},
+               "b.png": {"error": "timeout"}}
+    provenance = {"tool": "PlotPick", "version": "0.2.0"}
+    parsed = json.loads(results_to_json(results, provenance))
+    assert list(parsed) == ["provenance", "results"]
+    assert parsed["provenance"] == provenance
+    assert parsed["results"] == results

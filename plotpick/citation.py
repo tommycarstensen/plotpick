@@ -26,7 +26,7 @@ TITLE = (
 ARXIV_ID = "2605.06021"
 DOI = "10.48550/arXiv.2605.06021"
 DOI_URL = f"https://doi.org/{DOI}"
-APP_URL = "https://plotpick.streamlit.app/"
+REPO_URL = "https://github.com/tommycarstensen/plotpick"
 
 REFERENCE = (
     f"Carstensen T. {TITLE}. arXiv:{ARXIV_ID} [preprint, not peer reviewed]. "
@@ -79,7 +79,7 @@ def provenance(results: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     return {
         "tool": "PlotPick",
         "version": build(),
-        "url": APP_URL,
+        "url": REPO_URL,
         "models": models,
         "extraction_dates_utc": dates,
         "cite": REFERENCE,
@@ -100,7 +100,7 @@ def about_lines(about: Mapping[str, Any]) -> list[str]:
     models = ", ".join(about["models"]) or "not recorded"
     dates = ", ".join(about["extraction_dates_utc"]) or "not recorded"
     return [
-        f"Extracted with PlotPick {about['version']} ({about['url']})",
+        f"Extracted with PlotPick {about['version']}, {about['url']}",
         f"Model: {models}; extracted (UTC): {dates}",
         f"Please cite: {about['cite']}",
         "Every value is a model's reading of a figure: check it before use.",

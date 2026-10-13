@@ -1,15 +1,24 @@
-"""Write extracted tables as an R script, an Excel workbook or LaTeX.
+"""Write extracted tables as R, Excel, LaTeX, Markdown or JSON.
 
 No Streamlit dependency, so that every export can be tested on its own.  The
 app builds one table of all extracted rows, with a "source" column naming the
 figure each row came from, and hands it to these functions.
+
+Each function also takes `about`, lines that say which PlotPick version and
+model made the table, when, and how to cite PlotPick (plotpick.citation
+writes them).  They go where the format has room outside the data: comments
+in R and LaTeX, a footer in Markdown, a last sheet in Excel and a
+"provenance" object in JSON.  CSV has no such place and gets none, so that
+the data reads into any program unchanged.
 """
 
 import io
 import json
 import math
 import re
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import Any
 
 import pandas as pd
 
@@ -43,7 +52,7 @@ def _r_value(value: object) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def dataframe_to_r(df: pd.DataFrame) -> str:
+def dataframe_to_r(df: pd.DataFrame, about: Sequence[str] = ()) -> str:
     """The table as an R script that recreates it as a data.frame."""
     columns = []
     for name, column in df.items():
@@ -57,6 +66,7 @@ def dataframe_to_r(df: pd.DataFrame) -> str:
     return "\n".join([
         "# PlotPick output -- source directly in R",
         f"# Generated {datetime.now():%Y-%m-%d %H:%M}",
+        *(f"# {line}" for line in about),
         "",
         "dat <- data.frame(",
         *columns,
@@ -74,7 +84,7 @@ def sheet_names(labels: list[str]) -> dict[str, str]:
     the page and the figure; the start is often the same file name.  A name
     already taken, ignoring case, gets a number.
     """
-    taken = {"all", "history"}
+    taken = {"all", "history", "about"}
     names: dict[str, str] = {}
     for label in labels:
         base = _SHEET_FORBIDDEN.sub("_", label) or "Sheet"
@@ -89,8 +99,11 @@ def sheet_names(labels: list[str]) -> dict[str, str]:
     return names
 
 
-def dataframe_to_excel(df: pd.DataFrame) -> bytes:
+def dataframe_to_excel(df: pd.DataFrame, about: Sequence[str] = ()) -> bytes:
     """A workbook with all rows on one sheet and one sheet per source.
+
+    The `about` lines go on a last sheet, "About", so that the data sheets
+    hold data only.
 
     Text is written as text: openpyxl stores a string that starts with "=" as
     a formula, so a group label such as "=A1+1" from the model or a file
@@ -102,6 +115,11 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
         sources = df["source"].astype(str)
         for label, sheet in sheet_names(list(sources.unique())).items():
             df[sources == label].to_excel(writer, index=False, sheet_name=sheet)
+        if about:
+            about_sheet = writer.book.create_sheet("About")
+            for line in about:
+                about_sheet.append([line])
+            about_sheet.column_dimensions["A"].width = 100
         for worksheet in writer.book.worksheets:
             for row in worksheet.iter_rows():
                 for cell in row:
@@ -117,13 +135,29 @@ LATEX_NOTE = (
 )
 
 
-def dataframe_to_latex(df: pd.DataFrame) -> str:
+def dataframe_to_latex(df: pd.DataFrame, about: Sequence[str] = ()) -> str:
     """The table as a LaTeX tabular, with special characters escaped.
 
     Numbers keep up to ten significant digits: pandas' default printed 1e-7
     as 0.000000, and a group size in a column with a gap as 12.000000.
     """
-    return LATEX_NOTE + df.to_latex(
+    comments = "".join(f"% {line}\n" for line in about)
+    return LATEX_NOTE + comments + df.to_latex(
         index=False, escape=True, na_rep="",
         float_format=lambda value: format(value, ".10g"),
+    )
+
+
+def dataframe_to_markdown(df: pd.DataFrame, about: Sequence[str] = ()) -> str:
+    """The table as a Markdown pipe table, the `about` lines below it."""
+    footer = "".join(f"\n*{line}*\n" for line in about)
+    return df.to_markdown(index=False) + "\n" + footer
+
+
+def results_to_json(
+        results: Mapping[str, Any], provenance: Mapping[str, Any]) -> str:
+    """Every figure's full result by source label, after its provenance."""
+    return json.dumps(
+        {"provenance": provenance, "results": results},
+        indent=2, ensure_ascii=False,
     )

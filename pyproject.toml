@@ -29,10 +29,11 @@ dependencies = [
     "Pillow>=10.0",
     "pypdfium2>=5,<6",
     "requests>=2.27",
+    "tabulate>=0.9",
 ]
 
 [project.optional-dependencies]
-app = ["streamlit>=1.65,<2", "tabulate>=0.9"]
+app = ["streamlit>=1.65,<2"]
 dev = ["pytest", "ruff", "pycodestyle", "pyright"]
 
 [project.urls]
