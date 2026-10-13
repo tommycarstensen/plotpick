@@ -99,7 +99,8 @@ pip install pytest && pytest tests/
 The Results tab shows each figure's table beside the image it was read from, with the values the model flagged as uncertain in amber. The Export tab offers Markdown, Excel (one sheet for all rows and one per figure), CSV, LaTeX, JSON and an R script.
 
 - Every exported row starts with `source` (the file, page and caption label), `model`, `extracted_at` (UTC), `figure_type`, `y_axis` and `scale`, followed by the fields the model returned: `biomarker`, `group` and `timepoint`, then `median`, `q1` and `q3` for box plots; `n`, `mean`, `error` and `error_type` for bar charts; and `mean_or_median`, `error` and `error_type` for line plots.
-- The JSON export holds each figure's full result: the fields above, the model's `confidence` (0-100) and `notes`, each row's `uncertain` list, `image_sha256` (identifying the crop that was sent), and the error for any figure that failed.
+- The JSON export is an object with two keys. `results` holds each figure's full result by its source label: the fields above, the model's `confidence` (0-100) and `notes`, each row's `uncertain` list, `image_sha256` (identifying the crop that was sent), and the error for any figure that failed. `provenance` gives the PlotPick version, the models, the extraction dates (UTC) and the reference.
+- The Markdown, Excel, LaTeX and R exports carry the same provenance outside the data: a footer below the Markdown table, a last sheet named "About" in the workbook, and comment lines at the top of the LaTeX and R files. The CSV export holds the rows only.
 - Extracting a figure again replaces its earlier result.
 
 ## Using PlotPick in a systematic review
@@ -170,7 +171,27 @@ Questions and bug reports go to the [issue tracker](https://github.com/tommycars
 
 ## Citation
 
-Please cite the companion preprint: Carstensen, T. PlotPick: AI-powered batch extraction of numerical data from scientific figures. arXiv:2605.06021, https://doi.org/10.48550/arXiv.2605.06021. [CITATION.cff](CITATION.cff) has the same in machine-readable form, and [CHANGELOG.md](CHANGELOG.md) lists the changes between versions.
+If PlotPick helped your work, please cite the companion preprint (not yet peer reviewed):
+
+Carstensen T. PlotPick: AI-powered batch extraction of numerical data from scientific figures. arXiv:2605.06021. 2026. https://doi.org/10.48550/arXiv.2605.06021
+
+```bibtex
+@misc{carstensen2026plotpick,
+  author = {Carstensen, Tommy},
+  title = {{PlotPick}: {AI}-powered batch extraction of numerical data from scientific figures},
+  year = {2026},
+  eprint = {2605.06021},
+  archivePrefix = {arXiv},
+  doi = {10.48550/arXiv.2605.06021},
+  url = {https://doi.org/10.48550/arXiv.2605.06021},
+}
+```
+
+In a methods section, name the version as well, since PlotPick changes between versions. The Export tab writes a sentence of this form from your session, and every export but CSV records the same facts:
+
+> Numerical data were extracted from figures with PlotPick version 0.2.0 (Carstensen, 2026, arXiv:2605.06021), using claude-sonnet-5-5 on 2026-10-13; [say who checked every value against its figure, and how disagreements were resolved].
+
+[CITATION.cff](CITATION.cff) has the reference in machine-readable form (GitHub's "Cite this repository" reads it), and [CHANGELOG.md](CHANGELOG.md) lists the changes between versions.
 
 ## License
 

@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use PlotPick, please cite the preprint given under preferred-citation."
+message: "If PlotPick helped your work, please cite the preprint given under preferred-citation, and give the PlotPick version, the model and the date in your methods."
 title: "PlotPick"
 type: software
 license: MIT

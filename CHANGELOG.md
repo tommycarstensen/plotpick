@@ -6,6 +6,7 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- The JSON export is now an object with two keys, `provenance` and `results`; the per-figure results that made up the whole file before are under `results`.
 - PDFs are read with pypdfium2 (BSD-3-Clause or Apache-2.0); PyMuPDF (AGPL) is no longer a dependency. A figure's region is bounded anew, and a sentence that opens with a label ("Table 1 summarizes ...") is no longer taken for a caption.
 - Captions in the style "Fig 1" and supplementary "Figure S1" or "Table S2" are found; the gene symbol FIG4 is not taken for a caption.
 - Everything except the interface is now the installable package `plotpick` (`pip install .`; `pyproject.toml`), and `streamlit_app.py` imports it; the prompt, the model call and the reading of the reply are its `extraction` module.
@@ -18,6 +19,10 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
+- A "How to cite PlotPick" panel in the sidebar, with the reference and BibTeX to copy; the Export tab adds a methods sentence filled in from the session. Neither blocks use of the app.
+- The package has a version (`plotpick.__version__`), shown in the sidebar with the git commit when run from a checkout.
+- The Markdown, Excel, LaTeX, JSON and R exports record the PlotPick version, the model, the extraction dates and the reference: as comments in R and LaTeX, a footer in Markdown, a last sheet "About" in Excel, and the `provenance` object in JSON. CSV is unchanged.
+- `plotpick.citation` holds the reference and builds the provenance; `plotpick.exports` gains `dataframe_to_markdown` and `results_to_json`.
 - Every disabled Extract button states its reason (issue #2); an upload that cannot be read is explained instead of crashing the app.
 - Every result and every exported row records the model and the time of extraction (UTC); exported rows also carry their figure's type, y-axis label and scale, and the JSON export the SHA-256 of the image that was sent.
 - The Export tab names the figures whose extraction failed.
