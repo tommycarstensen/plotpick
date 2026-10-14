@@ -5,6 +5,11 @@ it from this module, and tests check that the README and CITATION.cff carry the
 same DOI and title. When the JOSS paper replaces the preprint as the work to
 cite, this module and CITATION.cff are the two places to change.
 
+The preprint is the work to cite; the software itself is archived on Zenodo,
+one record per release, and SOFTWARE_DOI is the concept DOI that resolves to
+the newest release and lists them all.  A methods section names the version,
+and the archive holds that version's exact code.
+
 A systematic review reports the tools used to collect data (PRISMA 2020 item
 9), with their version and the date of use; provenance() gathers those facts
 from a session's results, and methods_sentence() writes them as a sentence the
@@ -27,6 +32,8 @@ ARXIV_ID = "2605.06021"
 DOI = "10.48550/arXiv.2605.06021"
 DOI_URL = f"https://doi.org/{DOI}"
 REPO_URL = "https://github.com/tommycarstensen/plotpick"
+SOFTWARE_DOI = "10.5281/zenodo.23359933"
+SOFTWARE_DOI_URL = f"https://doi.org/{SOFTWARE_DOI}"
 
 REFERENCE = (
     f"Carstensen T. {TITLE}. arXiv:{ARXIV_ID} [preprint, not peer reviewed]. "
@@ -84,6 +91,7 @@ def provenance(results: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
         "extraction_dates_utc": dates,
         "cite": REFERENCE,
         "doi": DOI,
+        "software_doi": SOFTWARE_DOI,
     }
 
 
@@ -103,6 +111,7 @@ def about_lines(about: Mapping[str, Any]) -> list[str]:
         f"Extracted with PlotPick {about['version']}, {about['url']}",
         f"Model: {models}; extracted (UTC): {dates}",
         f"Please cite: {about['cite']}",
+        f"Each release is archived at https://doi.org/{about['software_doi']}",
         "Every value is a model's reading of a figure: check it before use.",
     ]
 
@@ -112,7 +121,7 @@ def methods_sentence(about: Mapping[str, Any]) -> str:
     models = " and ".join(about["models"]) or "[model]"
     return (
         f"Numerical data were extracted from figures with PlotPick version "
-        f"{about['version']} ({IN_TEXT}), using {models} "
+        f"{about['version']} ({IN_TEXT}; {SOFTWARE_DOI_URL}), using {models} "
         f"{_dates_text(about['extraction_dates_utc'])}; [say who checked every "
         f"value against its figure, and how disagreements were resolved]."
     )

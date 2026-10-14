@@ -4,6 +4,10 @@ Notable changes to PlotPick. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- Releases are archived on Zenodo (all versions: https://doi.org/10.5281/zenodo.23359933). The DOI is in CITATION.cff, the README, the cite panel, the methods sentence and the exports.
+
 ## [0.2.0] - 2026-10-13
 
 ### Changed

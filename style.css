@@ -38,6 +38,11 @@
 .stApp div[data-testid="stMetricLabel"] {
     color: var(--text-primary) !important;
 }
+/* Links: Streamlit's default blue is unreadable on navy */
+.stApp a {
+    color: var(--rh-light-blue) !important;
+    text-decoration: underline;
+}
 
 /* ── Top header bar ──────────────────────────────────────────────────── */
 header[data-testid="stHeader"] {

@@ -46,6 +46,7 @@ def test_readme_and_cff_cite_the_same_work(name: str) -> None:
     text = (REPO / name).read_text(encoding="utf-8")
     assert citation.DOI in text
     assert citation.TITLE in text
+    assert citation.SOFTWARE_DOI in text
 
 
 def test_build_starts_with_the_package_version() -> None:
@@ -97,6 +98,7 @@ def test_methods_sentence_for_one_day() -> None:
     assert f"PlotPick version {about['version']}" in sentence
     assert "using claude-sonnet-5-5 on 2026-10-13;" in sentence
     assert citation.IN_TEXT in sentence
+    assert citation.SOFTWARE_DOI_URL in sentence
 
 
 def test_methods_sentence_for_several_days_and_models() -> None:

@@ -172,7 +172,9 @@ def _citation_panel(sentence: str = "") -> None:
     st.caption(
         "A review reports the tools it used to collect data (PRISMA 2020 "
         "item 9): name PlotPick and its version, the model and the date. "
-        "Every export records them. PlotPick does not record who copies this."
+        "Every export records them. Each release is archived on Zenodo, "
+        f"{citation.SOFTWARE_DOI_URL}, which lists every version. PlotPick "
+        "does not record who copies this."
     )
 
 

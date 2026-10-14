@@ -1,6 +1,6 @@
 # PlotPick
 
-[![Tests](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml/badge.svg)](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml)
+[![Tests](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml/badge.svg)](https://github.com/tommycarstensen/plotpick/actions/workflows/test.yml) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23359933.svg)](https://doi.org/10.5281/zenodo.23359933)
 
 **Live demo:** [plotpick.streamlit.app](https://plotpick.streamlit.app/)
 
@@ -187,9 +187,9 @@ Carstensen T. PlotPick: AI-powered batch extraction of numerical data from scien
 }
 ```
 
-In a methods section, name the version as well, since PlotPick changes between versions. The Export tab writes a sentence of this form from your session, and every export but CSV records the same facts:
+In a methods section, name the version as well, since PlotPick changes between versions. Each release is archived on Zenodo, where https://doi.org/10.5281/zenodo.23359933 lists every version and gives each its own DOI. The Export tab writes a sentence of this form from your session, and every export but CSV records the same facts:
 
-> Numerical data were extracted from figures with PlotPick version 0.2.0 (Carstensen, 2026, arXiv:2605.06021), using claude-sonnet-5-5 on 2026-10-13; [say who checked every value against its figure, and how disagreements were resolved].
+> Numerical data were extracted from figures with PlotPick version 0.2.0 (Carstensen, 2026, arXiv:2605.06021; https://doi.org/10.5281/zenodo.23359933), using claude-sonnet-5-5 on 2026-10-13; [say who checked every value against its figure, and how disagreements were resolved].
 
 [CITATION.cff](CITATION.cff) has the reference in machine-readable form (GitHub's "Cite this repository" reads it), and [CHANGELOG.md](CHANGELOG.md) lists the changes between versions.
 
