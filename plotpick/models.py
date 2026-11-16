@@ -13,7 +13,9 @@ appears only when Opus is selected.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 ENV_VAR = "ANTHROPIC_API_KEY"
@@ -122,6 +124,73 @@ def missing_key_message(model: Model) -> str:
         f"{ENV_VAR} in the environment, in {SECRETS_PATH}, or in the app's "
         "Secrets settings on Streamlit Community Cloud."
     )
+
+
+# Statuses that are about the key or the account, never about one figure.
+_KEY_STATUSES = frozenset({401, 402, 403})
+# A 400 for a spend limit (the account's or a workspace's) or an empty credit
+# balance says so only in its message: the API gives it no type of its own.
+_SPEND_LIMIT = "usage limits"
+_NO_CREDIT = "credit balance"
+_REGAIN = re.compile(r"regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) UTC")
+
+
+def api_message(body: object) -> str:
+    """The readable message in an API error's JSON body, or ""."""
+    error = body.get("error") if isinstance(body, dict) else None
+    message = error.get("message") if isinstance(error, dict) else None
+    return message if isinstance(message, str) else ""
+
+
+def key_refused_message(model: Model, status: int, body: object) -> str | None:
+    """Plain words for an API error that every figure in the batch would get.
+
+    A spent monthly budget, an empty credit balance or a refused key is a
+    fault of the key, not of the figure.  The app used to show the API's raw
+    reply once per figure, which read as a broken app; on the owner's key,
+    "You have reached your specified workspace API usage limits" also read as
+    the visitor's fault.  Returns None for an error that belongs to one figure.
+    """
+    message = api_message(body)
+    lowered = message.lower()
+    if status not in _KEY_STATUSES and not (
+        status == 400 and (_SPEND_LIMIT in lowered or _NO_CREDIT in lowered)
+    ):
+        return None
+    if model.needs_own_key:
+        return (
+            "Anthropic refused the request on your API key, so no figure was "
+            f"read: {message or f'HTTP status {status}'}"
+        )
+    free = " and ".join(m.short_name for m in MODELS if not m.needs_own_key)
+    if _SPEND_LIMIT in lowered:
+        found = _REGAIN.search(message)
+        when = "until the allowance renews next month"
+        if found:
+            day = date.fromisoformat(found.group(1))
+            when = f"until {day.day} {day:%B %Y}, {found.group(2)} UTC"
+        text = (
+            f"PlotPick's free allowance for this month is used up, so {free} "
+            f"cannot read figures {when}."
+        )
+    elif _NO_CREDIT in lowered:
+        text = (
+            f"PlotPick's free allowance has run out, so {free} cannot read "
+            "figures for now."
+        )
+    else:
+        text = (
+            f"Anthropic refused PlotPick's own API key, so {free} cannot read "
+            "figures for now."
+        )
+    text += " Nothing is wrong with your files."
+    own = next((m for m in MODELS if m.needs_own_key), None)
+    if own is not None:
+        text += (
+            f" To go on now, choose {own.label} under Model and paste your "
+            "own Anthropic API key."
+        )
+    return text
 
 
 class ExtractionError(Exception):

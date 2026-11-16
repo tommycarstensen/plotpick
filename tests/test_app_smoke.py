@@ -201,6 +201,7 @@ def fake_anthropic(monkeypatch):
             "confidence": 90, "notes": "",
             "data": [{"group": "A", "mean": 1.5, "uncertain": []}],
         },
+        error=None,  # an exception to raise instead of answering
     )
 
     class Client:
@@ -210,6 +211,8 @@ def fake_anthropic(monkeypatch):
 
         def create(self, **request):
             fake.sent.append(request)
+            if fake.error is not None:
+                raise fake.error
             text = SimpleNamespace(type="text", text=json.dumps(fake.answer))
             return SimpleNamespace(stop_reason="end_turn", content=[text])
 
@@ -416,6 +419,52 @@ def test_failed_figures_are_named_in_the_export_tab(app, fake_anthropic):
     assert not at.exception
     assert any("1 figure(s) failed" in w.value and "plot.png" in w.value
                for w in at.warning)
+
+
+def spend_limit_error() -> anthropic.BadRequestError:
+    """The API's reply when the app's workspace hit its spend limit, 16 Nov 2026."""
+    body = {
+        "type": "error",
+        "error": {
+            "type": "invalid_request_error",
+            "message": "You have reached your specified workspace API usage "
+                       "limits. You will regain access on 2026-12-01 at 00:00 UTC.",
+        },
+    }
+    # The SDK's own HTTP library: httpx2 from anthropic 1.0 on.
+    http = pytest.importorskip("httpx2", reason="needs anthropic 1.x")
+    request = http.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.BadRequestError(
+        f"Error code: 400 - {body}",
+        response=http.Response(400, request=request),
+        body=body,
+    )
+
+
+def test_a_spent_allowance_stops_the_batch_and_says_so(app, fake_anthropic):
+    """Every figure failed one by one with the API's raw reply, which read as
+    a broken app; nothing said that the visitor's files were fine."""
+    at = app().run()
+    if not hasattr(at, "file_uploader"):
+        pytest.skip("this Streamlit's AppTest cannot simulate an upload")
+    fake_anthropic.error = spend_limit_error()
+    at = extract_all(at.file_uploader[0].set_value([
+        ("fig1.png", png_file(60, 40), "image/png"),
+        ("fig2.png", png_file(80, 50), "image/png"),
+    ]).run())
+    assert not at.exception
+    assert len(fake_anthropic.sent) == 1  # the second figure was not sent
+    assert at.session_state.results == {}  # both can be read on a later run
+    for run in (at, at.run()):  # and the message outlives the next rerun
+        (error,) = run.error
+        assert "free allowance for this month is used up" in error.value
+        assert "1 December 2026" in error.value
+
+    fake_anthropic.error = None
+    at = extract_all(at)
+    assert not at.exception
+    assert not at.error
+    assert sorted(at.session_state.results) == ["fig1.png", "fig2.png"]
 
 
 def expander(block, label: str):

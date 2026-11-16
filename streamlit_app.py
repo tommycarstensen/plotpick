@@ -49,6 +49,7 @@ from plotpick.models import (
     ExtractionError,
     extract_blocked_reason,
     figure_summary,
+    key_refused_message,
     missing_key_message,
     resolve_api_key,
     shared_key_from_environment,
@@ -187,6 +188,7 @@ _SESSION_DEFAULTS: dict[str, object] = {
     "pubmed_figures": {},  # PMCID -> figures
     "all_images": [],
     "results": {},
+    "key_refused": "",  # why the last batch stopped, see key_refused_message
 }
 for _key, _default in _SESSION_DEFAULTS.items():
     if _key not in st.session_state:
@@ -457,6 +459,7 @@ if images_to_extract:
     # Held in Session State from the start, so that a figure that raises
     # does not take the batch's earlier results, already paid for, with it.
     st.session_state.results = results
+    st.session_state.key_refused = ""
 
     with st.status(
         f"Extracting {total} figure(s) with {selected_model.short_name}...",
@@ -480,21 +483,42 @@ if images_to_extract:
                 n_rows = len(result.get("data", []))
                 st.write(f"\u2705  {n_rows} row(s) extracted")
             except (json.JSONDecodeError, ExtractionError, anthropic.APIError) as exc:
+                refused = (
+                    key_refused_message(selected_model, exc.status_code, exc.body)
+                    if isinstance(exc, anthropic.APIStatusError) else None
+                )
+                if refused:
+                    # Every later figure would get the same refusal.  This
+                    # figure and the rest stay out of the results, so that a
+                    # run on a working key reads them.
+                    st.session_state.key_refused = refused
+                    break
                 results[label] = {"error": str(exc), "data": [], **provenance}
                 st.write(f"\u274c  Failed: {exc}")
 
         n_ok = sum(1 for r in results.values() if "error" not in r)
         n_err = len(results) - n_ok
-        msg = f"Done -- {n_ok} figure(s) extracted successfully."
-        if n_err:
-            msg += f"  {n_err} failed."
-        status.update(label=msg, state="complete", expanded=False)
+        if st.session_state.key_refused:
+            status.update(
+                label="Stopped -- see the message below.",
+                state="error", expanded=False,
+            )
+        else:
+            msg = f"Done -- {n_ok} figure(s) extracted successfully."
+            if n_err:
+                msg += f"  {n_err} failed."
+            status.update(label=msg, state="complete", expanded=False)
 
     log_memory(f"extracting {total} figure(s)", held_summary())
     # Show the Results tab: the tabs below read their selection from this key.
     st.session_state.active_tab = TAB_RESULTS
 
 # -- Display results --------------------------------------------------------
+# Above the tabs, so it is seen whichever tab is open, and kept until the next
+# extraction: the status box above is gone after the next rerun.
+if st.session_state.key_refused:
+    st.error(st.session_state.key_refused, title="Extraction stopped")
+
 # on_change="rerun" is what makes the tabs keep their selection in Session
 # State, so that an extraction can select Results.  It replaces a script that
 # clicked the tab through st.components.v1.html, which Streamlit is removing.

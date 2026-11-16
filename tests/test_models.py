@@ -14,7 +14,9 @@ from plotpick.models import (
     MODEL_LABELS,
     MODELS,
     MODELS_BY_LABEL,
+    api_message,
     extract_blocked_reason,
+    key_refused_message,
     figure_summary,
     ExtractionError,
     missing_key_message,
@@ -227,3 +229,71 @@ def test_white_space_is_collapsed():
 def test_zero_confidence_is_not_reported_as_unknown():
     """0 is falsy but a real score -- it must not become "not given"."""
     assert figure_summary({"confidence": 0})["confidence"] == "0/100"
+
+
+# -- a refusal of the key, not of the figure ---------------------------------
+
+# The API's reply when the app's workspace hit its spend limit, 16 Nov 2026.
+SPEND_LIMIT = {
+    "type": "error",
+    "error": {
+        "type": "invalid_request_error",
+        "message": "You have reached your specified workspace API usage "
+                   "limits. You will regain access on 2026-12-01 at 00:00 UTC.",
+    },
+}
+
+
+def test_api_message_reads_the_body_and_tolerates_anything_else():
+    assert api_message(SPEND_LIMIT).startswith("You have reached")
+    for body in (None, "text", [], {"error": "text"}, {"error": {"message": 3}}):
+        assert api_message(body) == ""
+
+
+def test_spent_app_allowance_is_explained_with_the_date_and_a_way_on():
+    text = key_refused_message(FREE, 400, SPEND_LIMIT)
+    assert text is not None
+    assert "free allowance for this month is used up" in text
+    assert "until 1 December 2026, 00:00 UTC" in text
+    assert "Nothing is wrong with your files" in text
+    assert BYOK.label in text
+    assert "You have reached" not in text  # "you" would be the visitor
+
+
+def test_spent_allowance_without_a_date_still_says_when():
+    body = {"error": {"message": "You have reached your specified API usage limits."}}
+    text = key_refused_message(FREE, 400, body)
+    assert text is not None and "renews next month" in text
+
+
+@pytest.mark.parametrize("status, body, words", [
+    (400, {"error": {"message": "Your credit balance is too low to access "
+                                "the Anthropic API."}}, "has run out"),
+    (401, {"error": {"message": "invalid x-api-key"}}, "refused PlotPick's own"),
+    (402, None, "refused PlotPick's own"),
+])
+def test_other_refusals_of_the_app_key(status, body, words):
+    text = key_refused_message(FREE, status, body)
+    assert text is not None and words in text and BYOK.label in text
+
+
+def test_a_refusal_of_the_visitors_key_quotes_the_api():
+    text = key_refused_message(BYOK, 400, SPEND_LIMIT)
+    assert text is not None
+    assert "your API key" in text
+    assert "regain access on 2026-12-01" in text
+    assert "free allowance" not in text
+    assert key_refused_message(BYOK, 401, None) == (
+        "Anthropic refused the request on your API key, so no figure was "
+        "read: HTTP status 401"
+    )
+
+
+@pytest.mark.parametrize("status, body", [
+    (400, {"error": {"message": "image exceeds 5 MB maximum"}}),
+    (400, None),
+    (429, {"error": {"message": "rate limit"}}),
+    (500, {"error": {"message": "internal error"}}),
+])
+def test_an_error_of_one_figure_is_left_to_that_figure(status, body):
+    assert key_refused_message(FREE, status, body) is None
